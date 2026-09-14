@@ -1,8 +1,8 @@
-# draftbench
+# llm-draftbench
 
 **Benchmark LLM writers, reviewers and revision loops on real content.**
 
-draftbench measures three things separately, because a ranking for one is not a ranking for the others:
+llm-draftbench measures three things separately, because a ranking for one is not a ranking for the others:
 
 1. **Writers** — quality and reliability of a first draft from a frozen brief and evidence packet.
 2. **Reviewers** — whether a critic finds real defects, localises them, and leaves acceptable work alone. Issue precision and recall, false passes and false blocks, critical misses, abstention.
@@ -12,9 +12,9 @@ Every artifact carries its provenance: exact requested and served model, prompt 
 
 ## Status
 
-Planning. No code, no measured results, no model has been benchmarked. The repository is public from the start; private suites, customer material and confirmation data live outside it.
+Planning. The package and command-line tool will be called `draftbench`. No code, no measured results, no model has been benchmarked. The repository is public from the start; private suites, customer material and confirmation data live outside it.
 
-## What draftbench is not
+## What llm-draftbench is not
 
 - Not a universal model leaderboard.
 - Not a publication gate. Lab results do not authorize anything in production.
