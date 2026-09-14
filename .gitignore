@@ -1,0 +1,16 @@
+# local run artifacts and private suites never enter the public tree
+runs/
+suites/private/
+*.eval
+.env
+.env.*
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
