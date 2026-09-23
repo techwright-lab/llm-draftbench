@@ -1,8 +1,11 @@
 # Synthetic run contract v1
 
-This is an infrastructure execution contract, **not** a measured benchmark. The
-only adapter is `fake`, an explicitly deterministic fixture that never calls a
-model, browses, evaluates factual accuracy or publishes anything. It supports a
+This is an infrastructure execution contract, **not** a measured benchmark. Its
+adapters are `fake`, an explicitly deterministic fixture that never calls a
+model, browses, evaluates factual accuracy or publishes anything, and
+`inspect-fixture`, the same fixture driven through the pinned Inspect SDK
+([Inspect contract](INSPECT_CONTRACT.md)). Provider runs use a separate
+workflow ([five-model contract](FIVE_MODEL_CONTRACT.md)). It supports a
 fixed writer → reviewer → revision chain, not the full experimental design.
 
 ## Commands and scope
@@ -16,8 +19,8 @@ Choose a new output directory outside any Git checkout. The parent directory mus
 exist. Run/resume currently require POSIX advisory file locking; Windows execution
 is not implemented. Offline suite validation and inventory remain separate.
 
-`run` requires an explicit `--adapter fake`; no implicit adapter or provider
-fallback exists. It accepts only suites declared `synthetic_infrastructure`, with
+`run` requires an explicit `--adapter fake` or `--adapter inspect-fixture`; no
+implicit adapter or provider fallback exists. It accepts only suites declared `synthetic_infrastructure`, with
 development cases and synthetic available role inputs. Real evaluation suites
 remain loadable for validate/inventory but are refused by this executor.
 
@@ -109,5 +112,8 @@ and completed boundaries are exposed only as library checkpoints for fault tests
 not CLI instructions for executing arbitrary plugins.
 
 This is duplicate-dispatch prevention and explicit uncertainty, not a claim of
-universal exactly-once provider execution or zero-cost failure. Live billing,
-reservation budgets, retries, scoring and human annotation remain future work.
+universal exactly-once provider execution or zero-cost failure. Inspect fixture
+runs admit work against the frozen `--inspect-policy` bounds; provider runs use
+the shared campaign reservations in the five-model contract. Billing
+reconciliation and automatic retries are not implemented. Scoring and annotation
+have their own contracts.

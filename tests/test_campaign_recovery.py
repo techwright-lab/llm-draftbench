@@ -8,26 +8,25 @@ import pytest
 
 from draftbench import provider_workflow as workflow
 from draftbench.adapters import openai
-from draftbench.adapters.openai_contract import OpenAIPolicy
+from draftbench.adapters.pilot_policy import GPT6Policy
 from draftbench.campaign import CampaignBudget
 from draftbench.provider_reporting import report_openai
 
 
 @pytest.fixture
 def policy():
-    return OpenAIPolicy(
-        model="gpt-4.1-2025-04-14",
+    return GPT6Policy(
+        model="gpt-6-astra",
         account_route="mock",
         project="proj_mock",
         organization="org_mock",
         currency="USD",
-        input_per_million="20",
-        output_per_million="8",
         max_cost="50",
-        context_window_tokens=1047576,
         max_output_tokens=100,
         max_requests=3,
         max_total_tokens=4000000,
+        pricing_provenance="public-docs-2026-09-23-v1",
+        reasoning_effort="medium",
     )
 
 
@@ -100,11 +99,12 @@ def test_campaign_identity_frozen_in_approval_and_resume(tmp_path, policy, suite
             )
             with pytest.raises(ValueError, match="campaign_identity_mismatch"):
                 workflow.resume_openai(root, transport=object(), campaign=two)
-            # An existing unscoped run cannot silently enroll under a new cap.
-            legacy = tmp_path / "legacy"
-            workflow.run_openai(suite, legacy, policy, transport=object(), max_steps=0)
-            with pytest.raises(ValueError, match="campaign_identity_mismatch"):
-                workflow.resume_openai(legacy, transport=object(), campaign=one)
+            unscoped = tmp_path / "unscoped"
+            with pytest.raises(ValueError, match="campaign_required"):
+                workflow.run_openai(
+                    suite, unscoped, policy, transport=object(), max_steps=0
+                )
+            assert not unscoped.exists()
 
 
 def uncommitted_crash(path):
@@ -174,7 +174,7 @@ def test_unknown_or_wrong_campaign_cannot_dispatch(tmp_path, policy, suite):
     with CampaignBudget.create(tmp_path / "campaign.db") as budget:
         data = policy.model_dump()
         data["currency"] = "EUR"
-        with pytest.raises(ValueError, match="campaign_currency"):
+        with pytest.raises(ValueError, match="USD"):
             workflow.run_openai(
                 suite, tmp_path / "bad", data, transport=object(), campaign=budget
             )

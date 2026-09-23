@@ -16,7 +16,11 @@ from .pilot_policy import AnthropicPolicy
 def preflight(transport):
     if version("anthropic") != SDK_VERSION:
         raise ValueError("anthropic_version_mismatch")
-    if transport is not None:
+    if transport is None:
+        from .sdk_logging import refuse_sdk_debug_logging
+
+        refuse_sdk_debug_logging()
+    else:
         import httpx
 
         if type(transport) is not httpx.MockTransport:

@@ -154,3 +154,12 @@ def make_suite(tmp_path, case_data):
         return manifest
 
     return create
+
+
+@pytest.fixture
+def campaign(tmp_path_factory):
+    from draftbench.campaign import CampaignBudget
+
+    path = tmp_path_factory.mktemp("campaign") / "campaign.sqlite3"
+    with CampaignBudget.create(path) as budget:
+        yield budget

@@ -226,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "pilot":
         from . import pilot
+        from .adapters.sdk_logging import SDKLoggingError
 
         try:
             if args.pilot_command == "prepare":
@@ -254,6 +255,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
             return 0 if result.get("complete", True) else 3
+        except SDKLoggingError as exc:
+            print(json.dumps({"valid": False, "error": str(exc)}), file=sys.stderr)
+            return 2
         except Exception:
             # Never echo parser, SDK, filesystem or credential exception text.
             print(
@@ -289,8 +293,20 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _report_release(args) -> int:
+    from .annotation_models import AnnotationError
+    from .annotation_store import AnnotationStoreError
+    from .ledger import LedgerError
     from .release import check_release, export_release
-    from .reporting import build_report, prepare_report, read_report, write_report
+    from .reporting import (
+        ReportError,
+        build_report,
+        prepare_report,
+        read_report,
+        write_report,
+    )
+    from .scoring.reporting import ScoringError
+    from .store import StoreError
+    from .workflow import RunError
 
     try:
         if args.command == "release":
@@ -317,13 +333,22 @@ def _report_release(args) -> int:
             )
         print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
         return 0
+    except (
+        ReportError,
+        LedgerError,
+        StoreError,
+        RunError,
+        ScoringError,
+        SuiteError,
+        AnnotationError,
+        AnnotationStoreError,
+    ) as exc:
+        code = str(exc)
     except (OSError, ValueError, TypeError, KeyError, RecursionError):
-        # Validation diagnostics may contain private labels; never echo them.
-        print(
-            json.dumps({"valid": False, "error": "report_or_release_invalid"}),
-            file=sys.stderr,
-        )
-        return 2
+        # Untyped validation diagnostics may contain private labels; never echo them.
+        code = "report_or_release_invalid"
+    print(json.dumps({"valid": False, "error": code}), file=sys.stderr)
+    return 2
 
 
 def _provider(args):

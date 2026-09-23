@@ -66,6 +66,10 @@ def projection(report, selection):
     public_evidence = []
     for key in sorted(selection.evidence_ids):
         row = evidence[key]
+        if report["snapshot"].get("provider_run") is not None:
+            # Provider manifests deliberately omit input rights, so the source
+            # components' redistribution terms are unbound; never infer them.
+            raise ReportError("provider_evidence_rights_unbound")
         snapshot = report["snapshot"]["run"]
         rights = [snapshot["rights"], *row["rights"]] if snapshot else []
         if not rights or any(right["usage"] != "redistributable" for right in rights):

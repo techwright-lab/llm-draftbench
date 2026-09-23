@@ -32,7 +32,7 @@ def test_cannot_construct_live_permit():
         invoke(p, "p", authorization=permit, api_key="not-a-credential")
 
 
-def test_denial_binds_policy_data_and_run_path(tmp_path):
+def test_denial_binds_policy_data_and_run_path(tmp_path, campaign):
     seen = []
 
     def reject(binding):
@@ -41,24 +41,30 @@ def test_denial_binds_policy_data_and_run_path(tmp_path):
 
     for field, value in [
         (None, None),
-        ("model", "gpt-4.1-mini-2025-04-14"),
-        ("currency", "EUR"),
+        ("model", "gpt-6-sol"),
+        ("reasoning_effort", "medium"),
         ("max_cost", "51"),
         ("project", "proj_other"),
         ("max_requests", 2),
     ]:
-        p = policy().model_dump()
+        p = policy().model_dump(exclude={"input_per_million", "output_per_million"})
         if field:
             p[field] = value
         with pytest.raises(ValueError, match="live_authorization_required"):
-            run_openai(SUITE, tmp_path / "same-run", p, approve=reject)
+            run_openai(
+                SUITE, tmp_path / "same-run", p, approve=reject, campaign=campaign
+            )
     with pytest.raises(ValueError, match="live_authorization_required"):
-        run_openai(SUITE, tmp_path / "another-run", policy(), approve=reject)
+        run_openai(
+            SUITE, tmp_path / "another-run", policy(), approve=reject, campaign=campaign
+        )
     assert len(set(seen)) == len(seen)
     assert not list(tmp_path.iterdir())
 
 
-def test_native_provider_provenance_projection_with_stub(tmp_path, monkeypatch):
+def test_native_provider_provenance_projection_with_stub(
+    tmp_path, monkeypatch, campaign
+):
     """This is a host stub test, NOT evidence of provider execution/compatibility."""
     from draftbench.ledger import Ledger
 
@@ -88,7 +94,12 @@ def test_native_provider_provenance_projection_with_stub(tmp_path, monkeypatch):
         return True
 
     report = run_openai(
-        SUITE, root, policy(), approve=approve, api_key="unit-test-not-a-credential"
+        SUITE,
+        root,
+        policy(),
+        approve=approve,
+        api_key="unit-test-not-a-credential",
+        campaign=campaign,
     )
     assert report["provenance"] == "provider" and report["complete"]
     assert len(calls) == 3
@@ -116,10 +127,13 @@ def test_native_provider_provenance_projection_with_stub(tmp_path, monkeypatch):
     assert rendered
     with pytest.raises(ValueError, match="transport_provenance_mismatch"):
         # No fixture transport import under the SDK guard.
-        resume_openai(root, transport=object())
+        resume_openai(root, transport=object(), campaign=campaign)
     with pytest.raises(ValueError, match="live_authorization_required"):
         resume_openai(
-            root, approve=lambda binding: False, api_key="unit-test-not-a-credential"
+            root,
+            approve=lambda binding: False,
+            api_key="unit-test-not-a-credential",
+            campaign=campaign,
         )
     assert len(calls) == 3
 
@@ -134,10 +148,13 @@ def test_actual_process_death(tmp_path, stage, expected):
     import subprocess
     import sys
 
+    from draftbench.campaign import CampaignBudget
+
     script = """
 import json, os, socket, ssl, sys
 from draftbench.provider_workflow import run_openai
 from draftbench.adapters.openai_fixture import fixture_transport
+from draftbench.campaign import CampaignBudget
 def denied(*a, **k):
     raise AssertionError('network forbidden')
 socket.socket = denied
@@ -147,9 +164,12 @@ policy = json.loads(sys.argv[4])
 def die(name, work):
     if name == sys.argv[3]:
         os._exit(77)
-run_openai(sys.argv[1], sys.argv[2], policy, transport=fixture_transport(policy['model']), checkpoint=die)
+with CampaignBudget.open(sys.argv[5]) as campaign:
+    run_openai(sys.argv[1], sys.argv[2], policy, transport=fixture_transport(policy['model']), checkpoint=die, campaign=campaign)
 """
     root = tmp_path / "run"
+    ledger = tmp_path / "campaign.sqlite3"
+    CampaignBudget.create(ledger).close()
     result = subprocess.run(
         [
             sys.executable,
@@ -159,6 +179,7 @@ run_openai(sys.argv[1], sys.argv[2], policy, transport=fixture_transport(policy[
             str(root),
             stage,
             json.dumps(policy().model_dump()),
+            str(ledger),
         ],
         cwd=tmp_path,
         env={"PATH": os.defpath},
@@ -166,15 +187,20 @@ run_openai(sys.argv[1], sys.argv[2], policy, transport=fixture_transport(policy[
         text=True,
     )
     assert result.returncode == 77, result.stderr
-    recovered = resume_openai(root, transport=transport())
-    assert recovered["attempt_count"] == expected
-    if expected == 1:
-        assert recovered["states"]["uncertain"] == 1
-    assert resume_openai(root, transport=transport()) == recovered
+    with CampaignBudget.open(ledger) as campaign:
+        recovered = resume_openai(root, transport=transport(), campaign=campaign)
+        assert recovered["attempt_count"] == expected
+        if expected == 1:
+            assert recovered["states"]["uncertain"] == 1
+        assert (
+            resume_openai(root, transport=transport(), campaign=campaign) == recovered
+        )
 
 
-def test_saved_fixture_score_no_sdk(tmp_path, monkeypatch):
-    run_openai(SUITE, tmp_path / "run", policy(), transport=transport())
+def test_saved_fixture_score_no_sdk(tmp_path, monkeypatch, campaign):
+    run_openai(
+        SUITE, tmp_path / "run", policy(), transport=transport(), campaign=campaign
+    )
     original_import = builtins.__import__
 
     def deny(name, *args, **kwargs):

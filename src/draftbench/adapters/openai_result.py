@@ -6,6 +6,7 @@ from pydantic import Field
 
 from ..models import Contract, Digest
 from .openai_contract import SDK_VERSION, _usage, native_request
+from .pilot_policy import served_model_matches
 
 
 class OpenAIResult(Contract):
@@ -44,7 +45,7 @@ def verify_result(value, policy, prompt, provenance):
         or result.provenance != provenance
         or result.native_request != native_request(policy, prompt)
         or result.requested_model != policy.model
-        or result.served_model != policy.model
+        or not served_model_matches(policy.model, result.served_model)
         or native.get("model") != result.served_model
         or native.get("id") != result.completion_id
         or not result.completion_id

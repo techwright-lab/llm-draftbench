@@ -1,15 +1,12 @@
 # Shared campaign admission v1 (offline foundation)
 
-> Five-model extension: [FIVE_MODEL_CONTRACT.md](FIVE_MODEL_CONTRACT.md) adds
-> mandatory campaign enrollment for GPT-6 and Anthropic pilot policies. The
-> original foundation scope below describes the legacy GPT-4.1 integration; its
-> optional-campaign and no-new-provider statements do not apply to the extension.
+> Every supported provider policy (GPT-6 and Anthropic, see
+> [FIVE_MODEL_CONTRACT.md](FIVE_MODEL_CONTRACT.md)) requires campaign enrollment.
 
 `draftbench.campaign.CampaignBudget` is a provider-neutral local admission ledger.
 It does not implement a provider, verify published prices, authorize inference,
 reconcile a bill, or enable a live CLI mode. Provider names and prices in tests
-are synthetic. No additional model identifier or provider is supported by this
-change.
+are synthetic. This module adds no model identifier or provider of its own.
 
 ## Scope and ceiling
 
@@ -21,7 +18,7 @@ change.
 - Reopen that same file with `CampaignBudget.open(path)` for every subsequent
   process/run. Creation is exclusive, opening never creates, and neither API
   resets or increases a ceiling. The trusted host must pass the same authority
-  to **all** participating runs; unrelated/unscoped legacy runs are not covered.
+  to **all** participating runs; a run without a campaign is refused.
 - This is a local-file authority, not an account-wide provider spending limit.
   Separate files are separate campaigns; copying, deleting, restoring stale
   snapshots or branching a campaign DB defeats that authority and is forbidden.
@@ -59,11 +56,11 @@ exact model, account route, pricing, caps and other dispatch configuration.
 
 ## Existing workflow integration
 
-The existing `run_openai`, `resume_openai` and `approval_scope` embedding APIs
-accept an optional `campaign=budget` object. This adds no CLI switch. New scoped
-runs freeze the campaign identity in the manifest and trusted approval binding.
-Resuming a scoped run without that campaign, substituting another campaign, or
-silently enrolling an existing unscoped run is refused. Existing model
+The `run_provider`, `resume_provider` and `approval_scope` embedding APIs (and
+their `run_openai` / `resume_openai` aliases) require a `campaign=budget` object;
+the provider CLI takes `--campaign PATH`. Runs freeze the campaign identity in the
+manifest and trusted approval binding. Running without a campaign, resuming
+without that campaign, or substituting another campaign is refused. Existing model
 allowlists, provider wire contracts, approval callbacks and credential handling
 are unchanged.
 

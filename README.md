@@ -12,7 +12,7 @@ The intended measurement contract carries exact requested and served model, prom
 
 ## Status
 
-Offline infrastructure, in development. The Python package and CLI are called `draftbench`. They validate local suites, report replayability coverage, exercise synthetic run/resume and compute deterministic checks and reference-conditioned reviewer metrics. The first narrow OpenAI SDK transport is implemented and tested with mocked HTTP only; no real model study or live compatibility test has been run. There is no general semantic quality judge. Private suites, customer material and confirmation data live outside the repository.
+Offline infrastructure, in development. The Python package and CLI are called `draftbench`. They validate local suites, report replayability coverage, exercise synthetic run/resume and compute deterministic checks and reference-conditioned reviewer metrics. OpenAI and Anthropic SDK adapters are implemented and tested with mocked HTTP only; no real model study or live compatibility test has been run. There is no general semantic quality judge. Private suites, customer material and confirmation data live outside the repository.
 
 ## Try the offline example
 
@@ -52,22 +52,26 @@ The fixed synthetic chain writes a draft once, reviews that exact saved artifact
 
 Add `--max-steps 1` to pause after one synthetic invocation (exit 3); resume completes the rest. Exit 0 means all planned items completed, not that any content passed a quality evaluation. Real evaluation suites are refused by this executor; only explicitly synthetic inputs run. Run/resume currently require POSIX locking. Nothing calls a provider or publishes results.
 
-## Exercise the OpenAI SDK with synthetic HTTP
+## Exercise the provider SDKs with synthetic HTTP
 
-Install `uv sync --locked --extra openai`, then run:
+Install `uv sync --locked --extra pilot`, then run:
 
 ```sh
-uv run --offline --extra openai python examples/openai/smoke.py examples/smoke/suite.json /path/to/new-private-openai-smoke
+uv run --offline --extra pilot python examples/providers/smoke.py examples/smoke/suite.json /path/to/new-private-provider-smoke
 ```
 
-This socket-blocked journey uses the real pinned OpenAI SDK with **in-process
-MockTransport**, not a provider account. It verifies pause/resume, exact saved-text
-scoring and static report replay. The provider CLI exposes `openai fixture-run`,
-`fixture-resume`, `report` and `prepare` as offline operations. Live dispatch is
-a separate `pilot run` / `pilot resume` command requiring exact operator approval
-and an explicitly selected secure credential file; the smoke never uses it.
-See the [OpenAI contract](schemas/OPENAI_CONTRACT.md) for narrow supported snapshots,
+This socket-blocked journey uses the real pinned OpenAI and Anthropic SDKs with
+**in-process MockTransport**, not a provider account. It verifies pause/resume,
+shared campaign admission, exact saved-text scoring and static report replay. The
+provider CLI exposes `openai` and `anthropic` `fixture-run`, `fixture-resume`,
+`report` and `prepare` as offline operations. Live dispatch is a separate
+`pilot run` / `pilot resume` command requiring exact operator approval and an
+explicitly selected secure credential file; the smoke never uses it. See the
+[five-model contract](schemas/FIVE_MODEL_CONTRACT.md) for supported models,
 conservative reservations, provenance and residual live gates.
+
+Runs call the provider APIs directly on lab-owned accounts. Subscription CLIs,
+consumer apps and intermediary routers are never used.
 
 ## Exercise the optional Inspect SDK offline
 
@@ -142,7 +146,8 @@ Reports contain private JSON, CSV, static script-disabled HTML, local evidence a
 ## Five-model offline provider support
 
 The exact GPT-6 Astra/Sol/Luna and Claude Opus 5.5/Sonnet 5 IDs have pinned
-real-SDK mocked HTTP contracts, shared durable **US$50 total** campaign admission,
+real-SDK mocked HTTP contracts (OpenAI and Anthropic; Google and xAI are
+planned), shared durable **US$50 total** campaign admission,
 and SDK-free saved-output custody/reporting. Both provider families have fixture
 CLI routes; there is no ambient credential discovery. The separate three-model
 pilot launcher requires explicit scope approval and credentials. All five
@@ -186,7 +191,12 @@ model, low effort, 8,192 output tokens per request, at most nine requests and on
 shared US$50 campaign. Exact external output schemas and coarse completeness
 checks stop malformed/short results without repair or paid rerolls. This is not
 an SEO-quality score or ranking; blind human review and billing reconciliation
-come later. Private content-pipeline packets stay outside this repository. The
+come later. Private content-pipeline packets stay outside this repository.
+Provider output text cannot be selected for public release: the run does not
+bind the input rights, so `release` refuses it with
+`provider_evidence_rights_unbound`. Aggregate panels can still be exported.
+Live runs refuse to start while `OPENAI_LOG` or `ANTHROPIC_LOG` is set
+(`sdk_debug_logging_forbidden`), because SDK debug logs print prompts. The
 portable one-user-message envelope is **not exact production-native role replay**.
 Nothing automatically publishes content.
 

@@ -1,39 +1,36 @@
-# OpenAI text adapter v1 — offline implementation, live pilot NOT authorized
+# OpenAI GPT-6 text adapter — offline implementation, live pilot NOT authorized
 
-This adds a real `openai==2.29.0` / `httpx==0.28.1` Chat Completions SDK
-transport, verified with **in-process mocked HTTP only**. No provider request,
-credential discovery, account access, billing observation or live compatibility
-verification has occurred. The legacy provider CLI remains fixture/report-only;
+This is the real `openai==2.29.0` / `httpx==0.28.1` Chat Completions SDK
+transport for the `openai-gpt6-text-v1` policy, verified with **in-process mocked
+HTTP only**. No provider request, credential discovery, account access, billing
+observation or live compatibility verification has occurred. The provider CLI
+remains fixture/report-only;
 the separate [pilot launcher](PILOT_OPERATOR.md) has an explicit operator-approved
 three-model live entry point. Existing fake/Inspect
 contracts and their synthetic reports remain separate.
 
 ## Supported contract, not a model recommendation
 
-Only these explicitly supplied dated snapshots are admitted:
-`gpt-4.1-2025-04-14`, `gpt-4.1-mini-2025-04-14`,
-`gpt-4.1-nano-2025-04-14`. No default model, alias, Responses API, Azure route,
-reasoning-effort selection, tools, images/audio, prediction, streaming, batch,
-priority/flex pricing, automatic fallback or reroll is implemented.
-
-Official model pages were read to verify each snapshot, **1,047,576 context
-window** and **32,768 maximum output**:
-- https://developers.openai.com/api/docs/models/gpt-4.1
-- https://developers.openai.com/api/docs/models/gpt-4.1-mini
-- https://developers.openai.com/api/docs/models/gpt-4.1-nano
+Only the policy contract `openai-gpt6-text-v1` is accepted, with model
+`gpt-6-astra`, `gpt-6-sol` or `gpt-6-luna` and an explicit `reasoning_effort`.
+Model IDs, frozen tariffs, the 922,000-token context bound, served-model rules
+and source pages are in the [five-model contract](FIVE_MODEL_CONTRACT.md). The
+earlier dated GPT-4.1 policy (`openai-chat-text-v1`) was removed; policies that
+name it, or omit `contract`, fail with `unsupported_provider_contract`. No default
+model, Responses API, Azure route, tools, images/audio, prediction, streaming,
+batch, priority/flex pricing, automatic fallback or reroll is implemented.
 
 The installed SDK's constructor and `chat.completions.create` signature and
 `CompletionCreateParamsBase.max_completion_tokens` documentation were inspected.
 The call uses `client.chat.completions.with_raw_response.create(...)` and `.parse()`;
 raw response JSON is preserved as well, avoiding SDK coercion of invalid usage.
 The SDK documents `max_completion_tokens` as including visible and reasoning
-tokens. GPT-4.1 is not a reasoning-effort model; defensive accounting treats any
-reported reasoning tokens as already included in `completion_tokens`, never adds
-them again. These checks do not establish that an account has access to a model.
+tokens. Defensive accounting treats reported reasoning tokens as already included
+in `completion_tokens` and never adds them again. These checks do not establish that an account has access to a model.
 
 The fixed endpoint is `https://api.openai.com/v1`, single text user message,
 `max_completion_tokens=<explicit cap>`, `n=1`, `stream=false`, `store=false`,
-`service_tier=default`. The message is the exact canonical serialized role-input
+`service_tier=default`, `reasoning_effort=<explicit effort>`. The message is the exact canonical serialized role-input
 and parent-output envelope, not a claim to reproduce historical message framing.
 UTF-8 source/evidence files are hash-verified and materialized in that envelope.
 Evaluator labels, producer metadata and rights text are excluded from prompts.
@@ -48,7 +45,7 @@ SHA-256 binding; it does **not** approve anything. A separately trusted embeddin
 host must obtain explicit human authorization for that exact scope and supply
 `approve(binding)` backed by its approved digest, plus an explicit API key string
 to `run_openai` / `resume_openai`. Never approve by blindly returning true or by
-accepting an approval field from suite/config data. The legacy adapter has no
+accepting an approval field from suite/config data. The adapter has no
 ambient credential lookup or automatic model selection. The separate pilot
 launcher supplies this callback only after exact operator-digest approval and
 strict explicit credential loading.
@@ -73,20 +70,21 @@ approval remain operator gates, not claims established by mocked tests.
 
 ## Conservative admission and billing uncertainty
 
-`OpenAIPolicy` requires positive decimal-string prices, explicit ISO-style currency
-code, `currency_per_million_tokens` units and a spend cap in that currency. Pricing
-is an operator assertion requiring independent verification, not an SDK quote.
-No cached-token discount is guessed. For each admitted attempt reserve:
+`GPT6Policy` uses the frozen USD tariff for its model, `currency_per_million_tokens`
+units, a positive USD spend cap and mandatory enrollment in the shared
+[campaign](campaign-budget-v1.md). Pricing is an operator assertion requiring
+independent verification, not an SDK quote. No cached-token discount is guessed.
+For each admitted attempt reserve:
 
 ```
 token_units = entire_model_context_window + max_output_tokens
-cost = (entire_model_context_window * input_per_million
-        + max_output_tokens * output_per_million) / 1_000_000
+cost = (entire_model_context_window * 2.5 * input_per_million
+        + max_output_tokens * 1.5 * output_per_million) / 1_000_000
 ```
 
-Reserving the **whole model context**, rather than an invented bytes-to-token
-conversion, intentionally over-reserves input/framing. This assumes the documented
-text model context bound and supplied prices hold. It is not universal OpenAI
+Reserving the **whole model context** at the long-context cache-write rate, rather
+than an invented bytes-to-token conversion, intentionally over-reserves
+input/framing. This assumes the documented context bound and frozen prices hold. It is not universal OpenAI
 accounting, an invoice, a guarantee against provider pricing changes/taxes/other
 account traffic, or a substitute for an account-side spend limit. Cached input is
 charged at full supplied input rate for the upper estimate; reasoning is included
@@ -161,19 +159,19 @@ outputs or rights; provider evidence remains excluded from the public release pa
 ## Reproduce offline
 
 ```
-uv sync --locked --extra openai --extra inspect
-uv run --offline --extra openai pytest tests/test_openai_provider.py tests/test_openai_authorization.py
-uv run --offline --extra openai python examples/openai/smoke.py examples/smoke/suite.json /new/private/smoke
+uv sync --locked --extra openai --extra anthropic
+uv run --offline --extra openai --extra anthropic pytest tests/test_openai_provider.py tests/test_openai_authorization.py
+uv run --offline --extra openai --extra anthropic python examples/providers/smoke.py examples/smoke/suite.json /new/private/smoke
 ```
 
-The smoke uses a clearly synthetic policy (`XXX` test currency, invented fixture
-prices) and blocks socket/DNS/connect creation. It exercises real SDK serialization
-through MockTransport, CLI pause/resume, read-only run report, mechanical prepare/
-score, static render and exact replay. It never enables a live path.
+The smoke uses fixture-only account routes and a synthetic campaign database, and
+blocks socket/DNS/connect creation. It exercises real SDK serialization through
+MockTransport, CLI pause/resume, read-only run report, mechanical prepare/score,
+static render and exact replay. It never enables a live path.
 
 ```
-draftbench openai fixture-run suite.json --policy fixture-policy.json --output /new/private/run
-draftbench openai fixture-resume /private/run
+draftbench openai fixture-run suite.json --policy fixture-policy.json --output /new/private/run --campaign /private/campaign.sqlite3
+draftbench openai fixture-resume /private/run --campaign /private/campaign.sqlite3
 draftbench openai report /private/run
 draftbench openai prepare /private/run --rights output-rights.json --output /new/private/prepared
 draftbench score /private/prepared/bundle.json
@@ -182,8 +180,8 @@ draftbench report replay /private/report --output /new/private/replay
 ```
 
 SDK packages are optional; saved reporting, preparation and rescoring work without
-them. `examples/openai/replay_without_sdk.py SAVED_SMOKE_ROOT NEW_OUTPUT_ROOT`
-verifies that a core-only installed wheel (no OpenAI or HTTPX) can prepare,
+them. `examples/providers/replay_without_sdk.py SAVED_SMOKE_ROOT NEW_OUTPUT_ROOT`
+verifies that a core-only installed wheel (no provider SDK or HTTPX) can prepare,
 render with verified custody and replay byte-identically, while blocking provider
 generation imports/network and preserving run bytes, modes and modification times.
 Structural policy/result schemas accompany runtime cross-field validators.

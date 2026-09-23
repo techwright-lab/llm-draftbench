@@ -131,8 +131,13 @@ its `source_report_identity`, the exact `projection_digest` and full public
 projection. This preview does not create a public artifact or authorize anything.
 Only fixed role-panel fields are supported; v1 intentionally excludes nested
 reference-conditioned scoring from public exports. Raw evidence export is currently
-limited to verified run-based evidence; scoring-only supplied artifacts remain
-private because they do not carry the component-level run rights chain. IDs, producer names, URLs,
+limited to verified synthetic-run evidence; scoring-only supplied artifacts remain
+private because they do not carry the component-level run rights chain. Provider-run
+evidence (`--provider-run`) cannot be released either: provider manifests
+deliberately omit the suite and source rights, so selecting any provider evidence
+ID fails with `provider_evidence_rights_unbound`. Rights declared at `prepare`
+time cover only the output text, not the inputs it was generated from. Aggregate
+panels from provider reports can still be approved and exported. IDs, producer names, URLs,
 prompt bodies, private mappings, native artifacts and annotation notes are absent
 from aggregate-only projections. Unit text and rights statements are present only
 when their evidence ID was explicitly selected; selection does not anonymize text.

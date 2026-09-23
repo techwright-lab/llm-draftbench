@@ -3,17 +3,6 @@
     "ReleaseSelection": {
       "additionalProperties": false,
       "properties": {
-        "evidence_ids": {
-          "items": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-            "type": "string"
-          },
-          "maxItems": 4096,
-          "title": "Evidence Ids",
-          "type": "array"
-        },
         "format": {
           "const": "draftbench-release-selection-v1",
           "title": "Format",
@@ -31,6 +20,17 @@
           "maxItems": 3,
           "title": "Panels",
           "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 4096,
+          "title": "Evidence Ids",
+          "type": "array"
         }
       },
       "required": [
@@ -44,20 +44,19 @@
   },
   "additionalProperties": false,
   "properties": {
+    "format": {
+      "const": "draftbench-release-approval-v1",
+      "title": "Format",
+      "type": "string"
+    },
     "approved": {
       "const": true,
       "title": "Approved",
       "type": "boolean"
     },
-    "declared_reviewer": {
-      "maxLength": 100000,
-      "minLength": 1,
-      "title": "Declared Reviewer",
-      "type": "string"
-    },
-    "format": {
-      "const": "draftbench-release-approval-v1",
-      "title": "Format",
+    "source_report_identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Report Identity",
       "type": "string"
     },
     "projection_digest": {
@@ -73,6 +72,12 @@
       "title": "Reviewer Kind",
       "type": "string"
     },
+    "declared_reviewer": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Declared Reviewer",
+      "type": "string"
+    },
     "rights_attestation": {
       "maxLength": 100000,
       "minLength": 1,
@@ -81,11 +86,6 @@
     },
     "selection": {
       "$ref": "#/$defs/ReleaseSelection"
-    },
-    "source_report_identity": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Source Report Identity",
-      "type": "string"
     }
   },
   "required": [

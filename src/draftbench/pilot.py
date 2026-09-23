@@ -388,9 +388,11 @@ def run(plan, *, env_file, approve, resume=False):
     Resume retains the same authority and validates every completed output before
     spending anything else. It never regenerates malformed or uncertain work.
     """
+    from .adapters.sdk_logging import refuse_sdk_debug_logging
     from .credentials import load_credentials
     from .provider_workflow import resume_provider, run_provider
 
+    refuse_sdk_debug_logging()
     packet, root = _checked(plan)
     scope = packet["scope"]
     if approve != packet["digest"] or not scope["tariff"]["reviewed"]:

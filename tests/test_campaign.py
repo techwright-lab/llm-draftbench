@@ -146,21 +146,20 @@ def test_workflow_reservation_precedes_dispatch_and_resume_requires_campaign(
 ):
     from draftbench import provider_workflow as workflow
     from draftbench.adapters import openai
-    from draftbench.adapters.openai_contract import OpenAIPolicy
+    from draftbench.adapters.pilot_policy import GPT6Policy
 
-    policy = OpenAIPolicy(
-        model="gpt-4.1-2025-04-14",
+    policy = GPT6Policy(
+        model="gpt-6-astra",
         account_route="mock",
         project="proj_mock",
         organization="org_mock",
         currency="USD",
-        input_per_million="20",
-        output_per_million="8",
         max_cost="50",
-        context_window_tokens=1047576,
         max_output_tokens=100,
         max_requests=3,
         max_total_tokens=4000000,
+        pricing_provenance="public-docs-2026-09-23-v1",
+        reasoning_effort="medium",
     )
     monkeypatch.setattr(openai, "preflight", lambda transport: None)
     calls = []

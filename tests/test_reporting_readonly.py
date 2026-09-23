@@ -159,3 +159,31 @@ def test_readonly_preflight_never_reaches_sqlite(
     with pytest.raises(error, match=f"^{prefix}_{code}$"):
         cls.open(path, readonly=True)
     assert inventory(root) == before
+
+
+def test_cli_render_surfaces_recovery_code(prepared, tmp_path, capsys):
+    import json
+
+    from draftbench.cli import main
+
+    inputs = render_inputs(prepared)
+    crash(prepared[0] / "ledger.sqlite3", "wal")
+    status = main(
+        [
+            "report",
+            "render",
+            "--run",
+            str(inputs["run_dir"]),
+            "--bundle",
+            str(inputs["bundle_path"]),
+            "--bindings",
+            str(inputs["bindings_path"]),
+            "--output",
+            str(tmp_path / "report"),
+        ]
+    )
+    assert status == 2
+    assert json.loads(capsys.readouterr().err) == {
+        "valid": False,
+        "error": "ledger_requires_recovery",
+    }

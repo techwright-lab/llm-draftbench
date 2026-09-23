@@ -350,10 +350,13 @@ def _drive(ledger, store, manifest, *, max_steps, checkpoint):
         ):
             ledger.skip(work["work_id"], state="blocked", code="dependency_unresolved")
             continue
-        if manifest.adapter == "inspect-fixture":
-            InspectFixtureAdapter(
-                manifest.inspect_policy
-            )  # dependency preflight, before admission
+        # Construct before admission: Inspect's SDK preflight must refuse a
+        # missing dependency without reserving or stranding an attempt.
+        adapter = (
+            InspectFixtureAdapter(manifest.inspect_policy)
+            if manifest.adapter == "inspect-fixture"
+            else FakeAdapter()
+        )
         request = _request(work, case, ledger, store, manifest)
         request_digest = store.put_json(request)
         if state["state"] == "planned":
@@ -374,24 +377,10 @@ def _drive(ledger, store, manifest, *, max_steps, checkpoint):
         _checkpoint(checkpoint, "in_flight", work)
         steps += 1
         try:
-            adapter = (
-                InspectFixtureAdapter(manifest.inspect_policy)
-                if manifest.adapter == "inspect-fixture"
-                else FakeAdapter()
-            )
             value = adapter.invoke(request)
         except InspectOutcomeError as exc:
             # Durable native receipt survives terminal failure without changing old ledgers.
-            receipt = store.put_json(exc.native)
-            _write_receipt(
-                ledger._path.parent,
-                attempt,
-                {
-                    "attempt_id": attempt,
-                    "request_digest": request_digest,
-                    "native_digest": receipt,
-                },
-            )
+            _inspect_receipt(ledger, store, attempt, request_digest, exc.native)
             ledger.fail(
                 attempt,
                 "adapter_limited"
@@ -413,8 +402,18 @@ def _drive(ledger, store, manifest, *, max_steps, checkpoint):
             result = _validated_result(value, request)
         except (ValueError, TypeError):
             if manifest.adapter == "inspect-fixture":
-                ledger.recover()
-                continue
+                native = value.get("inspect") if isinstance(value, dict) else None
+                _inspect_receipt(
+                    ledger,
+                    store,
+                    attempt,
+                    request_digest,
+                    {
+                        **(native if isinstance(native, dict) else {}),
+                        "status": "invalid",
+                        "error": "invalid_adapter_output",
+                    },
+                )
             ledger.fail(attempt, "invalid_adapter_output")
             continue
         digest = store.put_json(result)
@@ -437,6 +436,18 @@ def _drive(ledger, store, manifest, *, max_steps, checkpoint):
             else "not_applicable_fixture",
         }
     return summary
+
+
+def _inspect_receipt(ledger, store, attempt, request_digest, native):
+    _write_receipt(
+        ledger._path.parent,
+        attempt,
+        {
+            "attempt_id": attempt,
+            "request_digest": request_digest,
+            "native_digest": store.put_json(native),
+        },
+    )
 
 
 def _write_receipt(root, attempt, receipt):

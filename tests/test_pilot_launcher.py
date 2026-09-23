@@ -11,6 +11,9 @@ from draftbench.cli import main
 from draftbench.credentials import load_credentials
 from draftbench.provider_reporting import snapshot_provider
 
+for _sdk in ("httpx", "openai", "anthropic"):
+    pytest.importorskip(_sdk)
+
 CANARY = "sk-canary-never-real-928352"
 ENV = (
     f"DRAFTBENCH_OPENAI_API_KEY={CANARY}\n"
