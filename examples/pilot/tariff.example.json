@@ -1,0 +1,15 @@
+{
+  "format": "operator-tariff-attestation-v1",
+  "reviewed": false,
+  "reviewed_by": "REPLACE_WITH_OPERATOR",
+  "reviewed_at": "REPLACE_WITH_UTC_REVIEW_TIMESTAMP",
+  "sources": ["https://developers.openai.com/api/docs/pricing", "https://platform.claude.com/docs/en/about-claude/pricing"],
+  "account_route": "lab-standard-global",
+  "currency": "USD",
+  "rates": {
+    "gpt-6-luna": ["0.1", "0.5"],
+    "gpt-6-sol": ["2", "10"],
+    "claude-sonnet-5": ["2", "10"]
+  },
+  "scope": "REPLACE_WITH_REVIEWED_ACCOUNT_ROUTE_STANDARD_GLOBAL_TEXT_TARIFF_SCOPE"
+}

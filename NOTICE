@@ -1,0 +1,7 @@
+llm-draftbench
+Copyright 2026 llm-draftbench contributors
+
+Original toolkit code is licensed under Apache License 2.0; see LICENSE.
+Datasets, source documents, annotations and third-party components retain their
+own licenses and permissions. The toolkit license does not grant redistribution
+rights to material loaded by a suite.

@@ -1,0 +1,316 @@
+{
+  "$defs": {
+    "Answer": {
+      "additionalProperties": false,
+      "properties": {
+        "response_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Response Id",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "task_identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Task Identity",
+          "type": "string"
+        },
+        "artifact_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Artifact Sha256",
+          "type": "string"
+        },
+        "rubric_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Rubric Digest",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "answered",
+            "unanswered"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "rated_at": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rated At"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "enum": [
+                "acceptable",
+                "unacceptable",
+                "abstain"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/ReviewCheck"
+          },
+          "maxItems": 256,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "defect_inventory": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable"
+          ],
+          "title": "Defect Inventory",
+          "type": "string"
+        },
+        "defects": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "maxItems": 512,
+          "title": "Defects",
+          "type": "array"
+        },
+        "notes": {
+          "maxLength": 100000,
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "response_id",
+        "task_id",
+        "task_identity",
+        "artifact_sha256",
+        "rubric_digest",
+        "status",
+        "rated_at",
+        "decision",
+        "criteria",
+        "defect_inventory",
+        "defects",
+        "notes"
+      ],
+      "title": "Answer",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "defect",
+            "suggestion"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "category": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "major",
+            "minor",
+            "suggestion"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "finding_id",
+        "kind",
+        "category",
+        "severity",
+        "description",
+        "span"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "ReviewCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "state"
+      ],
+      "title": "ReviewCheck",
+      "type": "object"
+    },
+    "Span": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "start": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "quote": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "start",
+        "end",
+        "quote"
+      ],
+      "title": "Span",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "draftbench-annotation-responses-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "packet_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Packet Id",
+      "type": "string"
+    },
+    "rater_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Rater Id",
+      "type": "string"
+    },
+    "packet_identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Packet Identity",
+      "type": "string"
+    },
+    "task_order": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Task Order",
+      "type": "array"
+    },
+    "answers": {
+      "items": {
+        "$ref": "#/$defs/Answer"
+      },
+      "maxItems": 256,
+      "title": "Answers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "format",
+    "session_id",
+    "packet_id",
+    "rater_id",
+    "packet_identity",
+    "task_order",
+    "answers"
+  ],
+  "title": "ResponseBatch",
+  "type": "object"
+}

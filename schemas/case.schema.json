@@ -1,0 +1,768 @@
+{
+  "$defs": {
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "file": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "rights": {
+          "$ref": "#/$defs/Rights"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "file",
+        "rights",
+        "producer"
+      ],
+      "title": "Artifact",
+      "type": "object"
+    },
+    "Draft": {
+      "additionalProperties": false,
+      "properties": {
+        "draft_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "version": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/PublicationUnit"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Units",
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        }
+      },
+      "required": [
+        "draft_id",
+        "version",
+        "units",
+        "producer"
+      ],
+      "title": "Draft",
+      "type": "object"
+    },
+    "Evaluator": {
+      "additionalProperties": false,
+      "properties": {
+        "labels": {
+          "items": {
+            "$ref": "#/$defs/Label"
+          },
+          "maxItems": 2048,
+          "title": "Labels",
+          "type": "array"
+        }
+      },
+      "required": [
+        "labels"
+      ],
+      "title": "Evaluator",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "available",
+            "unavailable",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          },
+          "maxItems": 256,
+          "title": "Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "state",
+        "artifacts"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "FileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "FileReference",
+      "type": "object"
+    },
+    "Generator": {
+      "additionalProperties": false,
+      "properties": {
+        "writer": {
+          "$ref": "#/$defs/RoleInput"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/RoleInput"
+        },
+        "revision": {
+          "$ref": "#/$defs/RoleInput"
+        }
+      },
+      "required": [
+        "writer",
+        "reviewer",
+        "revision"
+      ],
+      "title": "Generator",
+      "type": "object"
+    },
+    "History": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "available",
+            "unavailable",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "drafts": {
+          "items": {
+            "$ref": "#/$defs/Draft"
+          },
+          "maxItems": 256,
+          "title": "Drafts",
+          "type": "array"
+        },
+        "reviews": {
+          "items": {
+            "$ref": "#/$defs/Review"
+          },
+          "maxItems": 256,
+          "title": "Reviews",
+          "type": "array"
+        }
+      },
+      "required": [
+        "state",
+        "drafts",
+        "reviews"
+      ],
+      "title": "History",
+      "type": "object"
+    },
+    "InputPacket": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "historical_exact",
+            "reconstructed",
+            "synthetic"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Messages",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "draft_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Draft Ids",
+          "type": "array"
+        },
+        "review_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Review Ids",
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        }
+      },
+      "required": [
+        "basis",
+        "prompt_version",
+        "messages",
+        "evidence_ids",
+        "draft_ids",
+        "review_ids",
+        "producer"
+      ],
+      "title": "InputPacket",
+      "type": "object"
+    },
+    "Label": {
+      "additionalProperties": false,
+      "properties": {
+        "label_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Label Id",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "historical_exact",
+            "reconstructed",
+            "synthetic"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Question Id",
+          "type": "string"
+        },
+        "question_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Question Version",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "maxLength": 100000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        }
+      },
+      "required": [
+        "label_id",
+        "basis",
+        "draft_id",
+        "question_id",
+        "question_version",
+        "state",
+        "value",
+        "producer"
+      ],
+      "title": "Label",
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "Metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "content_type": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "domain": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "lane": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "body_format": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "source_system": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "source_revision": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        }
+      },
+      "required": [
+        "content_type",
+        "domain",
+        "lane",
+        "body_format",
+        "source_system",
+        "source_revision"
+      ],
+      "title": "Metadata",
+      "type": "object"
+    },
+    "Observation_Literal__known____unknown____unavailable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable']]",
+      "type": "object"
+    },
+    "Observation_Literal__known____unknown____unavailable____inapplicable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable",
+            "inapplicable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable', 'inapplicable']]",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "human",
+            "model",
+            "workflow",
+            "synthetic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "version": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        },
+        "served_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "version",
+        "requested_model",
+        "served_model"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "PublicationUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "social_post"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "kind",
+        "content"
+      ],
+      "title": "PublicationUnit",
+      "type": "object"
+    },
+    "Review": {
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Review Id",
+          "type": "string"
+        },
+        "round": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Round",
+          "type": "integer"
+        },
+        "draft_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "feedback": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Feedback",
+          "type": "string"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        }
+      },
+      "required": [
+        "review_id",
+        "round",
+        "draft_id",
+        "feedback",
+        "producer"
+      ],
+      "title": "Review",
+      "type": "object"
+    },
+    "Rights": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "usage": {
+          "enum": [
+            "private",
+            "redistributable"
+          ],
+          "title": "Usage",
+          "type": "string"
+        },
+        "authorization": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Authorization",
+          "type": "string"
+        }
+      },
+      "required": [
+        "license",
+        "usage",
+        "authorization"
+      ],
+      "title": "Rights",
+      "type": "object"
+    },
+    "RoleInput": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "available",
+            "unavailable",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InputPacket"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "input"
+      ],
+      "title": "RoleInput",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "available",
+            "unavailable",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "artifact"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "source_family": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Source Family",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "split": {
+      "enum": [
+        "development",
+        "confirmation"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "rights": {
+      "$ref": "#/$defs/Rights"
+    },
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "generator": {
+      "$ref": "#/$defs/Generator"
+    },
+    "evidence": {
+      "$ref": "#/$defs/Evidence"
+    },
+    "history": {
+      "$ref": "#/$defs/History"
+    },
+    "evaluator": {
+      "$ref": "#/$defs/Evaluator"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "case_id",
+    "source_family",
+    "metadata",
+    "split",
+    "rights",
+    "source",
+    "generator",
+    "evidence",
+    "history",
+    "evaluator"
+  ],
+  "title": "Case",
+  "type": "object"
+}

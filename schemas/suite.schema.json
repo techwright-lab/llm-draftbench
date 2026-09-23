@@ -1,0 +1,102 @@
+{
+  "$defs": {
+    "FileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "FileReference",
+      "type": "object"
+    },
+    "Rights": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "usage": {
+          "enum": [
+            "private",
+            "redistributable"
+          ],
+          "title": "Usage",
+          "type": "string"
+        },
+        "authorization": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Authorization",
+          "type": "string"
+        }
+      },
+      "required": [
+        "license",
+        "usage",
+        "authorization"
+      ],
+      "title": "Rights",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "suite_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Suite Id",
+      "type": "string"
+    },
+    "purpose": {
+      "enum": [
+        "synthetic_infrastructure",
+        "evaluation"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "rights": {
+      "$ref": "#/$defs/Rights"
+    },
+    "cases": {
+      "$ref": "#/$defs/FileReference"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "suite_id",
+    "purpose",
+    "rights",
+    "cases"
+  ],
+  "title": "Suite",
+  "type": "object"
+}

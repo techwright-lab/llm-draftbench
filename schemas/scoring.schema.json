@@ -1,0 +1,1168 @@
+{
+  "$defs": {
+    "Alignment": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Producer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "enum": [
+                "historical_exact",
+                "reconstructed",
+                "synthetic"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Basis"
+        },
+        "independence": {
+          "enum": [
+            "independent",
+            "same_system",
+            "unknown"
+          ],
+          "title": "Independence",
+          "type": "string"
+        },
+        "judgments": {
+          "items": {
+            "$ref": "#/$defs/FindingJudgment"
+          },
+          "maxItems": 512,
+          "title": "Judgments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "binding",
+        "producer",
+        "basis",
+        "independence",
+        "judgments"
+      ],
+      "title": "Alignment",
+      "type": "object"
+    },
+    "Binding": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Artifact Sha256",
+          "type": "string"
+        },
+        "rubric_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Rubric Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_sha256",
+        "rubric_id",
+        "rubric_version"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "CitationCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "const": "citation",
+          "title": "Kind",
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "relevance": {
+          "enum": [
+            "relevant",
+            "irrelevant",
+            "unknown"
+          ],
+          "title": "Relevance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "applicability",
+        "kind",
+        "span",
+        "source_id",
+        "relevance"
+      ],
+      "title": "CitationCheck",
+      "type": "object"
+    },
+    "EvidenceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 100000,
+          "title": "Text",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "text",
+        "sha256"
+      ],
+      "title": "EvidenceSource",
+      "type": "object"
+    },
+    "FactCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "const": "fact",
+          "title": "Kind",
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "observed_value": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Observed Value",
+          "type": "string"
+        },
+        "observed_unit": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed Unit"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Id"
+        },
+        "reference_span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Value"
+        },
+        "expected_unit": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Unit"
+        },
+        "relevance": {
+          "enum": [
+            "relevant",
+            "irrelevant",
+            "unknown"
+          ],
+          "title": "Relevance",
+          "type": "string"
+        },
+        "assertion_mode": {
+          "enum": [
+            "asserted",
+            "hypothetical",
+            "fictional"
+          ],
+          "title": "Assertion Mode",
+          "type": "string"
+        },
+        "authorized_nonfactual": {
+          "title": "Authorized Nonfactual",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "check_id",
+        "applicability",
+        "kind",
+        "span",
+        "observed_value",
+        "observed_unit",
+        "source_id",
+        "reference_span",
+        "expected_value",
+        "expected_unit",
+        "relevance",
+        "assertion_mode",
+        "authorized_nonfactual"
+      ],
+      "title": "FactCheck",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "defect",
+            "suggestion"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "category": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "major",
+            "minor",
+            "suggestion"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "span": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Span"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "finding_id",
+        "kind",
+        "category",
+        "severity",
+        "description",
+        "span"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "matched",
+            "spurious",
+            "ambiguous",
+            "unassessed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "defect_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 512,
+          "title": "Defect Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "finding_id",
+        "state",
+        "defect_ids"
+      ],
+      "title": "FindingJudgment",
+      "type": "object"
+    },
+    "LengthCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "const": "length",
+          "title": "Kind",
+          "type": "string"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Id"
+        },
+        "min_chars": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Chars"
+        },
+        "max_chars": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Chars"
+        }
+      },
+      "required": [
+        "check_id",
+        "applicability",
+        "kind",
+        "unit_id",
+        "min_chars",
+        "max_chars"
+      ],
+      "title": "LengthCheck",
+      "type": "object"
+    },
+    "LiteralCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "required_literal",
+            "forbidden_literal"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Id"
+        },
+        "literal": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Literal",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "applicability",
+        "kind",
+        "unit_id",
+        "literal"
+      ],
+      "title": "LiteralCheck",
+      "type": "object"
+    },
+    "NonemptyCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "const": "nonempty",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "applicability",
+        "kind"
+      ],
+      "title": "NonemptyCheck",
+      "type": "object"
+    },
+    "Observation_Literal__known____unknown____unavailable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable']]",
+      "type": "object"
+    },
+    "Observation_Literal__known____unknown____unavailable____inapplicable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable",
+            "inapplicable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable', 'inapplicable']]",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "human",
+            "model",
+            "workflow",
+            "synthetic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "version": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        },
+        "served_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "version",
+        "requested_model",
+        "served_model"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Producer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "enum": [
+                "historical_exact",
+                "reconstructed",
+                "synthetic"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Basis"
+        },
+        "independence": {
+          "enum": [
+            "independent",
+            "same_system",
+            "unknown"
+          ],
+          "title": "Independence",
+          "type": "string"
+        },
+        "acceptability": {
+          "enum": [
+            "acceptable",
+            "unacceptable",
+            "unknown"
+          ],
+          "title": "Acceptability",
+          "type": "string"
+        },
+        "defect_inventory": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable"
+          ],
+          "title": "Defect Inventory",
+          "type": "string"
+        },
+        "defects": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "maxItems": 512,
+          "title": "Defects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "binding",
+        "producer",
+        "basis",
+        "independence",
+        "acceptability",
+        "defect_inventory",
+        "defects"
+      ],
+      "title": "Reference",
+      "type": "object"
+    },
+    "ReviewCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown",
+            "inapplicable",
+            "invalid"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "state"
+      ],
+      "title": "ReviewCheck",
+      "type": "object"
+    },
+    "ReviewerAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "decision": {
+          "enum": [
+            "pass",
+            "edit",
+            "block",
+            "abstain",
+            "error"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/ReviewCheck"
+          },
+          "maxItems": 256,
+          "title": "Checks",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "maxItems": 512,
+          "title": "Findings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "binding",
+        "producer",
+        "decision",
+        "checks",
+        "findings"
+      ],
+      "title": "ReviewerAssessment",
+      "type": "object"
+    },
+    "Rights": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "usage": {
+          "enum": [
+            "private",
+            "redistributable"
+          ],
+          "title": "Usage",
+          "type": "string"
+        },
+        "authorization": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Authorization",
+          "type": "string"
+        }
+      },
+      "required": [
+        "license",
+        "usage",
+        "authorization"
+      ],
+      "title": "Rights",
+      "type": "object"
+    },
+    "Rubric": {
+      "additionalProperties": false,
+      "properties": {
+        "rubric_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "citation": "#/$defs/CitationCheck",
+                "fact": "#/$defs/FactCheck",
+                "forbidden_literal": "#/$defs/LiteralCheck",
+                "length": "#/$defs/LengthCheck",
+                "nonempty": "#/$defs/NonemptyCheck",
+                "required_literal": "#/$defs/LiteralCheck"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NonemptyCheck"
+              },
+              {
+                "$ref": "#/$defs/LengthCheck"
+              },
+              {
+                "$ref": "#/$defs/LiteralCheck"
+              },
+              {
+                "$ref": "#/$defs/CitationCheck"
+              },
+              {
+                "$ref": "#/$defs/FactCheck"
+              }
+            ]
+          },
+          "maxItems": 256,
+          "title": "Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rubric_id",
+        "version",
+        "checks"
+      ],
+      "title": "Rubric",
+      "type": "object"
+    },
+    "ScoreCase": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Identity",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "source_family": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Source Family",
+          "type": "string"
+        },
+        "artifact": {
+          "$ref": "#/$defs/ScoringArtifact"
+        },
+        "rubric": {
+          "$ref": "#/$defs/Rubric"
+        },
+        "sources_state": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable"
+          ],
+          "title": "Sources State",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/EvidenceSource"
+          },
+          "maxItems": 256,
+          "title": "Sources",
+          "type": "array"
+        },
+        "reference": {
+          "$ref": "#/$defs/Reference"
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewerAssessment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Alignment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "identity",
+        "case_id",
+        "source_family",
+        "artifact",
+        "rubric",
+        "sources_state",
+        "sources",
+        "reference",
+        "review",
+        "alignment"
+      ],
+      "title": "ScoreCase",
+      "type": "object"
+    },
+    "ScoringArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/ScoringUnit"
+          },
+          "maxItems": 256,
+          "title": "Units",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sha256",
+        "units"
+      ],
+      "title": "ScoringArtifact",
+      "type": "object"
+    },
+    "ScoringUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "social_post"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "kind",
+        "content"
+      ],
+      "title": "ScoringUnit",
+      "type": "object"
+    },
+    "Span": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "start": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "quote": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "start",
+        "end",
+        "quote"
+      ],
+      "title": "Span",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-scoring-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "purpose": {
+      "enum": [
+        "synthetic_infrastructure",
+        "evaluation"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "rights": {
+      "$ref": "#/$defs/Rights"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/ScoreCase"
+      },
+      "maxItems": 4096,
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "format",
+    "purpose",
+    "rights",
+    "cases"
+  ],
+  "title": "ScoringBundle",
+  "type": "object"
+}

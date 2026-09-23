@@ -1,0 +1,41 @@
+name: Offline checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.11.15"
+          enable-cache: false
+      - name: Install locked development environment
+        run: uv sync --locked --extra inspect --extra pilot
+      - name: Lint and format
+        run: |
+          uv run --offline ruff check .
+          uv run --offline ruff format --check .
+      - name: Credential-free regression tests
+        run: uv run --offline --extra inspect --extra pilot pytest
+      - name: Synthetic CLI smoke
+        run: |
+          uv run --offline draftbench --help
+          uv run --offline draftbench validate examples/synthetic/suite.json
+          uv run --offline draftbench inventory examples/synthetic/suite.json
+      - name: Build distribution
+        run: uv build --no-sources
