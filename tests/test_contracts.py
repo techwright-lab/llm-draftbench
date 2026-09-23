@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from draftbench.identity import canonical_bytes, identity, strict_json_loads
 from draftbench.loader import SuiteError, load_suite
-from draftbench.models import Case, Suite
+from draftbench.models import Case
 from draftbench.report import generator_payload, inventory
 
 
@@ -163,10 +163,17 @@ def test_generator_boundary(case_data):
 
 
 def test_exported_schema_matches_models():
+    import importlib.util
     from pathlib import Path
 
-    for name, model in [("case", Case), ("suite", Suite)]:
-        exported = json.loads(
-            (Path(__file__).parents[1] / "schemas" / f"{name}.schema.json").read_text()
-        )
-        assert exported == model.model_json_schema()
+    directory = Path(__file__).parents[1] / "schemas"
+    spec = importlib.util.spec_from_file_location(
+        "schema_export", directory / "export.py"
+    )
+    export = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(export)
+    names = {name for name, _ in export.SCHEMAS}
+    assert {"case", "suite", "gpt6-policy", "anthropic-policy"} <= names
+    for name, model in export.SCHEMAS:
+        exported = json.loads((directory / f"{name}.schema.json").read_text())
+        assert exported == model.model_json_schema(), name

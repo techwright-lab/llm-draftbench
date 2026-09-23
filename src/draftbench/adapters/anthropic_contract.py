@@ -1,6 +1,7 @@
 """Pure Anthropic wire contract; no SDK or dispatch dependency."""
 
 from .pilot_policy import AnthropicPolicy as AnthropicPolicy
+from .pilot_policy import served_model_matches
 
 SDK_VERSION = "0.84.0"
 BASE_URL = "https://api.anthropic.com"
@@ -93,7 +94,7 @@ def _usage(native, policy):
 def visible_output(native, policy):
     if (
         type(native) is not dict
-        or native.get("model") != policy.model
+        or not served_model_matches(policy.model, native.get("model"))
         or type(native.get("id")) is not str
         or not native["id"]
         or native.get("type") != "message"

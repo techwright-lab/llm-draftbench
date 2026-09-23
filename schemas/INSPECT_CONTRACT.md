@@ -1,7 +1,7 @@
 # Offline Inspect SDK contract
 
-This is an **offline infrastructure subtask**, not completion of Task 8's live
-acceptance. `inspect-fixture` uses the installed `inspect-ai==0.3.223` SDK and an
+This is an **offline infrastructure contract**; Inspect has no live execution
+path. `inspect-fixture` uses the installed `inspect-ai==0.3.223` SDK and an
 in-process `ModelAPI` fixture transport. There is no HTTP client, provider factory,
 credential discovery, subscription access, fallback route or live-enable flag in
 this adapter. The literal requested and served fixture model is
@@ -99,8 +99,11 @@ exclusive fsynced `attempt-<id>.json` receipt binding the request and an immutab
 native outcome object. Reports verify and freeze these private receipts. If a
 process dies before the terminal ledger event, any receipt is orphan evidence,
 not completion; recovery remains uncertain. Exception text is not echoed in the
-CLI; exception type and unknown charge are recorded instead. Unexpected errors
-outside native normalization conservatively become uncertain.
+CLI; exception type and unknown charge are recorded instead. A returned result
+that fails request binding (role, request digest or parent digests) is an
+observed failure: it is recorded as `failed` with `invalid_adapter_output` and
+a receipt, the same as the `fake` adapter, not as uncertain. Other unexpected
+errors outside native normalization conservatively become uncertain.
 
 The existing read-only SQLite/crash-refusal, content-addressed store, private
 permissions, append-only attempts, mechanical-only scoring, synthetic watermark,

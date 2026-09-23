@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-llm-draftbench is a product-agnostic toolkit for measuring writers, reviewers and revision workflows separately. This development slice validates suite structure, provenance and replayability coverage offline and exercises a deterministic synthetic writer/reviewer/revision chain with durable run/resume. It does not execute model evaluations or establish any model's quality.
+llm-draftbench is a product-agnostic toolkit for measuring writers, reviewers and revision workflows separately. This development slice validates suite structure, provenance and replayability coverage offline and exercises a deterministic synthetic writer/reviewer/revision chain with durable run/resume. A separately approved pilot launcher can dispatch a small bounded provider run; no result establishes any model's quality.
 
 TrustGrowth is the first intended private pilot. The public toolkit must not depend on its database, application code, credentials or internal documentation. A system-specific exporter supplies portable manifests from outside this repository.
 
@@ -25,14 +25,13 @@ These are the measurement goals, not claims that every scorer is implemented. Ag
 
 ## Execution and authorization
 
-The initial CLI is offline. Future measured runs use direct provider APIs on lab-owned accounts through a replaceable execution adapter; no subscription CLI or intermediary routing is part of that design. Before a live run, authorize the exact configuration, data egress and budget; configure provider-side caps and local limits. Never use product credentials, default paid fallbacks, contribution-triggered inference or automatic result publication. Local admission controls are not a universal billing guarantee.
+Validation, fixtures, scoring and reporting are offline. The only live path is `pilot run` / `pilot resume`, which calls the OpenAI and Anthropic APIs directly through their pinned SDKs on lab-owned accounts; subscription CLIs and intermediary routers are never used. Before a live run, authorize the exact configuration, data egress and budget; configure provider-side caps and local limits. Never use product credentials, default paid fallbacks, contribution-triggered inference or automatic result publication. Local admission controls are not a universal billing guarantee.
 
 The optional Inspect integration is SDK-backed but strictly fixture-only. It
 exercises real registered tasks and a local transport under serial, durable
 admission limits. Native failures, limits and missing usage remain distinct;
 no fixture is a measured model. See [the offline Inspect contract](schemas/INSPECT_CONTRACT.md).
-Live Task 8 acceptance remains deferred until a specific model, access route,
-authorized data and budget are separately approved and implemented.
+Inspect has no provider transport; live runs use the direct SDK adapters.
 
 ## Privacy, rights and release
 

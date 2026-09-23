@@ -1,5 +1,6 @@
 """Versioned five-model, text-only pilot policies; archived prices are not approval."""
 
+import re
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -17,6 +18,16 @@ RATES = {
     "claude-opus-5-5": ("4", "20"),
     "claude-sonnet-5": ("2", "10"),
 }
+
+
+def served_model_matches(requested, served):
+    # A dated snapshot of the requested alias bills at the alias tariff. Any
+    # other served id is a different model and must never be accepted.
+    return type(served) is str and (
+        served == requested
+        or re.fullmatch(re.escape(requested) + r"-(?:\d{4}-\d{2}-\d{2}|\d{8})", served)
+        is not None
+    )
 
 
 class PilotPolicy(TokenBudget, Contract):

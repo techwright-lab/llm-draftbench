@@ -40,7 +40,7 @@ case_line = canonical_bytes(case) + b"\n"
 `case.schema.json` and `suite.schema.json` are Pydantic's JSON Schema exports
 (Draft 2020-12 vocabulary), checked against the models by tests. Regenerate with
 `Case.model_json_schema()` / `Suite.model_json_schema()` and JSON indentation 2.
-Run `uv run --offline python schemas/export.py` to regenerate both exports.
+Run `uv run --offline python schemas/export.py` to regenerate every schema export.
 Schemas validate **structure only**: identity, availability/payload relationships,
 ID references, split isolation, rights consistency and on-disk integrity also
 require `load_suite`. Python's strict integer rejection of `1.0` is stronger than
@@ -203,7 +203,11 @@ content is safe aggregate data; no inputs are copied to the output.
 
 ## Explicitly not implemented
 
-No Inspect AI dependency/adapter, provider SDKs, network calls, model execution,
+Suite v1 itself carries no provider settings and triggers no model execution. The
+optional Inspect fixture adapter ([Inspect contract](INSPECT_CONTRACT.md)), the
+OpenAI and Anthropic SDK adapters ([five-model contract](FIVE_MODEL_CONTRACT.md))
+and the separately approved pilot launcher ([operator guide](PILOT_OPERATOR.md))
+have their own contracts. Not implemented: a
 general semantic quality judge, annotation UI, publication gate, confirmation custody ledger,
 private-system exports or hidden confirmation harness. These require separate
 contracts and tests, not placeholder commands. The separate

@@ -377,3 +377,53 @@ def test_invalid_native_output_is_retained(
     assert native["error"] == error
     assert native["native_output"]["completion"] == content
     assert resume_synthetic(out) == result
+
+
+def test_unbound_result_is_recorded_as_invalid_output(
+    smoke_suite, tmp_path, monkeypatch
+):
+    from draftbench.reporting import snapshot_run
+
+    original = InspectFixtureAdapter.invoke
+    calls = []
+
+    def mismatched(self, request):
+        calls.append(request["work_id"])
+        value = original(self, request)
+        value["role"] = "reviewer" if value["role"] == "writer" else "writer"
+        return value
+
+    monkeypatch.setattr(InspectFixtureAdapter, "invoke", mismatched)
+    out = tmp_path / "run"
+    result = run_synthetic(smoke_suite, out, adapter="inspect-fixture")
+    assert result["states"]["failed"] == 1
+    assert result["states"]["uncertain"] == 0
+    assert result["attempt_count"] == 1
+    work = snapshot_run(out)["work"][0]
+    assert work["error_code"] == "invalid_adapter_output"
+    assert work["native_failure"]["status"] == "invalid"
+    assert work["native_failure"]["error"] == "invalid_adapter_output"
+    assert work["native_failure"]["sdk_version"] == "0.3.223"
+    assert resume_synthetic(out) == result
+    assert len(calls) == 1
+
+
+def test_missing_sdk_on_resume_reserves_nothing(smoke_suite, tmp_path, monkeypatch):
+    from importlib.metadata import PackageNotFoundError
+
+    from draftbench.adapters import inspect as adapter
+
+    out = tmp_path / "run"
+    paused = run_synthetic(smoke_suite, out, adapter="inspect-fixture", max_steps=1)
+    real = adapter.version
+
+    def missing(name):
+        if name == "inspect-ai":
+            raise PackageNotFoundError(name)
+        return real(name)
+
+    monkeypatch.setattr(adapter, "version", missing)
+    with pytest.raises(ValueError, match="inspect_dependency_missing"):
+        resume_synthetic(out)
+    monkeypatch.setattr(adapter, "version", real)
+    assert resume_synthetic(out, max_steps=0) == paused

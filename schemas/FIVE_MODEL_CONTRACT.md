@@ -1,6 +1,7 @@
 # Five-model text provider contract v1 — offline tested
 
-This extends the legacy GPT-4.1 contract; it does not replace it. The exact pilot
+This is the only provider contract; the earlier GPT-4.1 contract
+(`openai-chat-text-v1`) is removed and its policies are refused. The exact pilot
 IDs are `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `claude-opus-5-5`, and
 `claude-sonnet-5`. No aliases, automatic model substitution or fallback exist.
 Mocked SDK HTTP success is **not evidence of live model availability or provider
@@ -81,7 +82,6 @@ All five pilot models require the same explicitly supplied `CampaignBudget` on
 run and resume, **including fixtures**. Never create one campaign per model or
 provider for the real pilot. See [shared admission](campaign-budget-v1.md).
 Fixture smoke uses its own synthetic campaign, never the live pilot's authority.
-Legacy GPT-4.1 unscoped runs remain backward compatible.
 
 `run_provider` / `resume_provider` reuse the existing durable workflow; shared
 reservation commits before local in-flight and dispatch. Provider name, attempt,
@@ -108,8 +108,24 @@ requires separately verified input accounting, not lowering a guessed quote.
 
 ## Native evidence and read-only custody
 
-Native JSON is saved privately before SDK coercion. IDs, exact served model,
-stop reason and nullable usage are retained; served aliases are rejected.
+Native JSON is saved privately before SDK coercion. IDs, stop reason, nullable
+usage and the requested and served model are retained as separate fields. A
+served model is accepted only if it equals the requested ID or is that ID plus a
+dated-snapshot suffix (`-YYYY-MM-DD` or `-YYYYMMDD`), for example
+`gpt-6-luna-2026-09-01` for `gpt-6-luna`. Any other served ID (another model,
+tier or variant) makes the call uncertain with unknown cost.
+
+Anthropic `usage.inference_geo` is checked against the request, which always
+sends `inference_geo=global`. `global` or an absent value is accepted. Any other
+value (for example `us`, which is priced differently from global) is rejected as
+invalid usage, because the reservation assumed global pricing. The native
+response is still saved, the call becomes uncertain and the reservation is kept.
+`usage.service_tier` must likewise be `standard` or absent.
+
+Live dispatch refuses to start while `OPENAI_LOG` or `ANTHROPIC_LOG` is set, or
+while the `openai`, `anthropic`, `httpx` or `httpcore` logger is enabled for
+DEBUG, because SDK debug logs print request bodies. The error code is
+`sdk_debug_logging_forbidden`; the check runs before any reservation.
 Malformed counters (including booleans, floats, strings and unknown nonzero detail
 fields) produce uncertain status and **unknown cost**, retaining the reservation.
 Missing usage remains unknown. HTTP errors retain safe request ID/status/code,

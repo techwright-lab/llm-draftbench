@@ -4,6 +4,7 @@ from typing import Literal
 
 from .anthropic_contract import SDK_VERSION, _usage, native_request, visible_output
 from .openai_result import OpenAIResult
+from .pilot_policy import served_model_matches
 
 
 class AnthropicResult(OpenAIResult):
@@ -21,7 +22,8 @@ def verify_result(value, policy, prompt, provenance):
         or result.provenance != provenance
         or result.native_request != native_request(policy, prompt)
         or result.requested_model != policy.model
-        or result.served_model != policy.model
+        or not served_model_matches(policy.model, result.served_model)
+        or native.get("model") != result.served_model
         or native.get("id") != result.completion_id
         or native.get("stop_reason") != "end_turn"
         or result.output != visible_output(native, policy)

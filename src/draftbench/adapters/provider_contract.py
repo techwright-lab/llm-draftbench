@@ -6,14 +6,12 @@ from .pilot_policy import AnthropicPolicy, GPT6Policy, PilotPolicy
 
 
 def parse_policy(value):
-    if isinstance(value, (openai_contract.OpenAIPolicy, PilotPolicy)):
+    if isinstance(value, PilotPolicy):
         value = value.model_dump(mode="json")
-    contract = value.get("contract", "openai-chat-text-v1")
     cls = {
-        "openai-chat-text-v1": openai_contract.OpenAIPolicy,
         "openai-gpt6-text-v1": GPT6Policy,
         "anthropic-messages-text-v1": AnthropicPolicy,
-    }.get(contract)
+    }.get(value.get("contract"))
     if cls is None:
         raise ValueError("unsupported_provider_contract")
     return cls.model_validate(value)

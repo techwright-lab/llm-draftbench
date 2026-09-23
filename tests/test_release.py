@@ -189,3 +189,41 @@ def test_export_no_clobber_and_report_drift(prepared, tmp_path):
         stream.write("drift")
     with pytest.raises(ValueError):
         export_release(private, approval, tmp_path / "drift")
+
+
+@pytest.mark.parametrize(
+    "field,value,code",
+    [
+        ("projection_digest", "0" * 64, "release_approval_mismatch"),
+        ("approved", False, "report_or_release_invalid"),
+    ],
+)
+def test_cli_release_surfaces_safe_error_code(
+    prepared, tmp_path, capsys, field, value, code
+):
+    private = tmp_path / "private"
+    write_report(build_report(**render_inputs(prepared)), private)
+    approval, _ = approval_for(
+        private,
+        {
+            "format": "draftbench-release-selection-v1",
+            "panels": ["writer"],
+            "evidence_ids": [],
+        },
+        tmp_path,
+    )
+    save(approval, {**json.loads(approval.read_text()), field: value})
+    capsys.readouterr()
+    status = main(
+        [
+            "release",
+            "export",
+            str(private),
+            "--approval",
+            str(approval),
+            "--output",
+            str(tmp_path / "public"),
+        ]
+    )
+    assert status == 2
+    assert json.loads(capsys.readouterr().err) == {"valid": False, "error": code}

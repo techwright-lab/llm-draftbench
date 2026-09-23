@@ -5,27 +5,27 @@ from pathlib import Path
 
 import pytest
 
-from draftbench.adapters.openai_contract import OpenAIPolicy, _usage
+from draftbench.adapters.openai_contract import _usage
+from draftbench.adapters.pilot_policy import GPT6Policy
 from draftbench.campaign import CampaignBudget
 from draftbench.ledger import Ledger
 from draftbench.provider_workflow import report_openai, resume_openai, run_openai
 
 
 def policy(**changes):
-    return OpenAIPolicy.model_validate(
+    return GPT6Policy.model_validate(
         dict(
-            model="gpt-4.1-2025-04-14",
+            model="gpt-6-astra",
             account_route="mock",
             project="proj_mock",
             organization="org_mock",
             currency="USD",
-            input_per_million="20",
-            output_per_million="8",
             max_cost="50",
-            context_window_tokens=1047576,
             max_output_tokens=100,
             max_requests=3,
             max_total_tokens=4000000,
+            pricing_provenance="public-docs-2026-09-23-v1",
+            reasoning_effort="medium",
         )
         | changes
     )
@@ -34,7 +34,7 @@ def policy(**changes):
 @pytest.mark.parametrize("traps", [False, True])
 @pytest.mark.parametrize("rounding", [ROUND_DOWN, ROUND_UP])
 @pytest.mark.parametrize(
-    "count,cap,allowed", [(1, "20", False), (2, "41", False), (2, "41.90464", True)]
+    "count,cap,allowed", [(1, "23", False), (2, "46", False), (2, "46.115", True)]
 )
 def test_exact_admission(count, cap, allowed, traps, rounding):
     p = policy(max_cost=cap)
@@ -54,7 +54,7 @@ def test_exact_admission(count, cap, allowed, traps, rounding):
         assert ctx.flags == before.flags
 
 
-@pytest.mark.parametrize("cap,expected_count", [("20", 0), ("41", 1)])
+@pytest.mark.parametrize("cap,expected_count", [("23", 0), ("46", 1)])
 @pytest.mark.parametrize("traps", [False, True])
 def test_campaign_run_cap_before_dispatch_and_resume(
     tmp_path, cap, expected_count, traps
@@ -83,7 +83,7 @@ def test_campaign_run_cap_before_dispatch_and_resume(
             assert len(calls) == expected_count
             assert result["attempt_count"] == expected_count
             assert Decimal(result["reserved_cost"]) == Decimal(
-                "20.95232" if expected_count else "0"
+                "23.0575" if expected_count else "0"
             )
             assert resume_openai(root, transport=transport, campaign=budget) == result
             assert report_openai(root) == result
@@ -104,8 +104,8 @@ def test_quote_and_usage_ignore_exponent_limits_and_traps():
         ctx.Emax = 1
         ctx.Emin = -1
         ctx.traps[Inexact] = ctx.traps[Rounded] = True
-        assert p.reservation_cost == Decimal("20.95232")
-        assert _usage(native, p)[1] == "0.000252"
+        assert p.reservation_cost == Decimal("23.0575")
+        assert _usage(native, p)[1] == "0.00031"
         p.admit(2)
         assert not any(ctx.flags.values())
 

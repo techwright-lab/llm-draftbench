@@ -113,6 +113,8 @@ def test_conflicting_edge_is_checked_even_after_visit(graph):
 
 
 def test_installed_closure_includes_runtime_not_development():
+    for name in ("httpx", "openai", "anthropic"):
+        pytest.importorskip(name)
     result = pilot.runtime_dependencies()
     assert {
         "draftbench",

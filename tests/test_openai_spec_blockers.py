@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import httpx
 import pytest
 from test_openai_provider import policy, response, transport
 
@@ -11,6 +10,8 @@ from draftbench.adapters.openai import invoke
 from draftbench.provider_workflow import prepare_openai, run_openai
 from draftbench.reporting import build_report, read_report, write_report
 
+httpx = pytest.importorskip("httpx")
+pytest.importorskip("openai")
 SUITE = Path(__file__).parents[1] / "examples/smoke/suite.json"
 
 
@@ -45,10 +46,10 @@ def test_wire_detail_counters_are_exact_integers(details, field, value):
 
 
 @pytest.fixture
-def prepared(tmp_path):
+def prepared(tmp_path, campaign):
     run = tmp_path / "run"
     target = tmp_path / "prepared"
-    run_openai(SUITE, run, policy(), transport=transport())
+    run_openai(SUITE, run, policy(), transport=transport(), campaign=campaign)
     rights = json.loads(SUITE.read_text())["rights"]
     prepare_openai(run, target, rights)
     return run, target
@@ -101,7 +102,7 @@ def test_provider_prepared_report_roundtrip(prepared, tmp_path):
         "changed_context",
     ],
 )
-def test_preparation_custody_fails_closed(prepared, tmp_path, mutation):
+def test_preparation_custody_fails_closed(prepared, tmp_path, mutation, campaign):
     from draftbench.provider_reporting import snapshot_provider
     from draftbench.reporting import identified
     from draftbench.scoring.models import artifact_digest
@@ -125,7 +126,7 @@ def test_preparation_custody_fails_closed(prepared, tmp_path, mutation):
     elif mutation.startswith("swapped"):
         other = tmp_path / "other"
         changed = policy().model_copy(update={"account_route": "other-fixture"})
-        run_openai(SUITE, other, changed, transport=transport())
+        run_openai(SUITE, other, changed, transport=transport(), campaign=campaign)
         prepare_openai(
             other, tmp_path / "other-prepared", json.loads(SUITE.read_text())["rights"]
         )
@@ -167,7 +168,7 @@ def test_preparation_custody_fails_closed(prepared, tmp_path, mutation):
 
         manifest = snapshot["manifest"]
         if mutation == "changed_policy":
-            manifest["policy"]["input_per_million"] = "3"
+            manifest["policy"]["max_cost"] = "3"
         else:
             case = next(iter(manifest["inputs"]))
             manifest["inputs"][case]["writer"]["tampered"] = True
@@ -260,7 +261,7 @@ def test_provider_provenance_is_not_relabelled_synthetic(prepared):
     assert report["snapshot"]["source_bundle"]["purpose"] == "evaluation"
 
 
-def test_malformed_usage_retains_reservation_and_native_receipt(tmp_path):
+def test_malformed_usage_retains_reservation_and_native_receipt(tmp_path, campaign):
     from draftbench.provider_workflow import resume_openai
     from draftbench.store import ArtifactStore
 
@@ -273,11 +274,16 @@ def test_malformed_usage_retains_reservation_and_native_receipt(tmp_path):
         return httpx.Response(200, json=native)
 
     run = tmp_path / "run"
-    first = run_openai(SUITE, run, policy(), transport=httpx.MockTransport(handler))
+    first = run_openai(
+        SUITE, run, policy(), transport=httpx.MockTransport(handler), campaign=campaign
+    )
     assert first["states"]["uncertain"] == 1
     assert first["reserved_cost"] == str(policy().reservation_cost)
     assert first["reserved_token_units"] == policy().reserved_tokens
-    assert resume_openai(run, transport=httpx.MockTransport(handler)) == first
+    assert (
+        resume_openai(run, transport=httpx.MockTransport(handler), campaign=campaign)
+        == first
+    )
     assert len(calls) == 1
     receipt = json.loads(next(run.glob("attempt-*.json")).read_text())
     result = ArtifactStore(run / "objects").get_json(receipt["native_digest"])

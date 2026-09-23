@@ -10,9 +10,6 @@ from .openai_contract import (
     SDK_VERSION as SDK_VERSION,
 )
 from .openai_contract import (
-    OpenAIPolicy as OpenAIPolicy,
-)
-from .openai_contract import (
     _usage as _usage,
 )
 from .openai_contract import (
@@ -26,7 +23,11 @@ from .openai_contract import (
 def preflight(transport):
     if version("openai") != SDK_VERSION:
         raise ValueError("openai_version_mismatch")
-    if transport is not None:
+    if transport is None:
+        from .sdk_logging import refuse_sdk_debug_logging
+
+        refuse_sdk_debug_logging()
+    else:
         import httpx
 
         if type(transport) is not httpx.MockTransport:
@@ -39,17 +40,13 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
     Exception messages/bodies/headers are never recorded. Native success bodies
     are private artifacts, not public reports. Missing usage is unknown, not zero.
     """
-    from .pilot_policy import GPT6Policy
+    from .pilot_policy import GPT6Policy, served_model_matches
     from .provider_contract import parse_policy
 
     policy = parse_policy(policy)
-    if not isinstance(policy, (OpenAIPolicy, GPT6Policy)):
+    if not isinstance(policy, GPT6Policy):
         raise ValueError("openai_policy_required")
-    if (
-        transport is None
-        and isinstance(policy, GPT6Policy)
-        and policy.verified_tariff_digest is None
-    ):
+    if transport is None and policy.verified_tariff_digest is None:
         raise ValueError("verified_tariff_required")
     request = native_request(policy, prompt)
     if transport is None:
@@ -134,11 +131,11 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
         )
         choices = native.get("choices", [])
         if (
-            output.model != policy.model
+            not served_model_matches(policy.model, output.model)
             or len(choices) != 1
             or type(native.get("id")) is not str
             or not native["id"]
-            or native.get("model") != policy.model
+            or native.get("model") != output.model
             or native.get("service_tier") not in (None, "default")
         ):
             raise ValueError("invalid_native_output")

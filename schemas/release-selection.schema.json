@@ -1,17 +1,6 @@
 {
   "additionalProperties": false,
   "properties": {
-    "evidence_ids": {
-      "items": {
-        "maxLength": 128,
-        "minLength": 1,
-        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-        "type": "string"
-      },
-      "maxItems": 4096,
-      "title": "Evidence Ids",
-      "type": "array"
-    },
     "format": {
       "const": "draftbench-release-selection-v1",
       "title": "Format",
@@ -28,6 +17,17 @@
       },
       "maxItems": 3,
       "title": "Panels",
+      "type": "array"
+    },
+    "evidence_ids": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        "type": "string"
+      },
+      "maxItems": 4096,
+      "title": "Evidence Ids",
       "type": "array"
     }
   },
