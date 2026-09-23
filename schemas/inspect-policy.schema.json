@@ -1,0 +1,73 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "model": {
+      "const": "draftbench-fixture",
+      "default": "draftbench-fixture",
+      "title": "Model",
+      "type": "string"
+    },
+    "max_requests": {
+      "default": 30000,
+      "maximum": 30000,
+      "minimum": 1,
+      "title": "Max Requests",
+      "type": "integer"
+    },
+    "max_input_bytes": {
+      "default": 100000,
+      "maximum": 1000000,
+      "minimum": 1,
+      "title": "Max Input Bytes",
+      "type": "integer"
+    },
+    "max_output_tokens": {
+      "default": 4096,
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Max Output Tokens",
+      "type": "integer"
+    },
+    "max_total_tokens": {
+      "default": 4000000000,
+      "minimum": 1,
+      "title": "Max Total Tokens",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "default": 30,
+      "maximum": 300,
+      "minimum": 1,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    },
+    "max_cost_usd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": 0,
+      "title": "Max Cost Usd"
+    },
+    "price_per_million": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": 0,
+      "title": "Price Per Million"
+    }
+  },
+  "title": "InspectPolicy",
+  "type": "object"
+}

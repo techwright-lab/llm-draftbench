@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "RubricCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "question"
+      ],
+      "title": "RubricCriterion",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-annotation-rubric-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "rubric_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Rubric Id",
+      "type": "string"
+    },
+    "rubric_version": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Rubric Version",
+      "type": "string"
+    },
+    "instructions": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "criteria": {
+      "items": {
+        "$ref": "#/$defs/RubricCriterion"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Criteria",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "format",
+    "rubric_id",
+    "rubric_version",
+    "instructions",
+    "criteria"
+  ],
+  "title": "AnnotationRubric",
+  "type": "object"
+}

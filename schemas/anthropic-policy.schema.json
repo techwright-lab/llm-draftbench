@@ -1,0 +1,140 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "account_route": {
+      "pattern": "^[A-Za-z0-9._-]{1,128}$",
+      "title": "Account Route",
+      "type": "string"
+    },
+    "currency": {
+      "const": "USD",
+      "title": "Currency",
+      "type": "string"
+    },
+    "price_unit": {
+      "const": "currency_per_million_tokens",
+      "default": "currency_per_million_tokens",
+      "title": "Price Unit",
+      "type": "string"
+    },
+    "pricing_provenance": {
+      "const": "public-docs-2026-09-23-v1",
+      "title": "Pricing Provenance",
+      "type": "string"
+    },
+    "verified_tariff_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified Tariff Digest"
+    },
+    "input_per_million": {
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$",
+      "title": "Input Per Million",
+      "type": "string"
+    },
+    "output_per_million": {
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$",
+      "title": "Output Per Million",
+      "type": "string"
+    },
+    "max_cost": {
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$",
+      "title": "Max Cost",
+      "type": "string"
+    },
+    "max_output_tokens": {
+      "maximum": 32768,
+      "minimum": 1,
+      "title": "Max Output Tokens",
+      "type": "integer"
+    },
+    "max_requests": {
+      "maximum": 30000,
+      "minimum": 1,
+      "title": "Max Requests",
+      "type": "integer"
+    },
+    "max_total_tokens": {
+      "minimum": 1,
+      "title": "Max Total Tokens",
+      "type": "integer"
+    },
+    "max_input_bytes": {
+      "default": 100000,
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Max Input Bytes",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "default": 30,
+      "maximum": 300,
+      "minimum": 1,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    },
+    "contract": {
+      "const": "anthropic-messages-text-v1",
+      "default": "anthropic-messages-text-v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "model": {
+      "enum": [
+        "claude-opus-5-5",
+        "claude-sonnet-5"
+      ],
+      "title": "Model",
+      "type": "string"
+    },
+    "context_window_tokens": {
+      "const": 1000000,
+      "default": 1000000,
+      "title": "Context Window Tokens",
+      "type": "integer"
+    },
+    "thinking": {
+      "default": "adaptive",
+      "enum": [
+        "adaptive",
+        "disabled"
+      ],
+      "title": "Thinking",
+      "type": "string"
+    },
+    "effort": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "title": "Effort",
+      "type": "string"
+    }
+  },
+  "required": [
+    "account_route",
+    "currency",
+    "pricing_provenance",
+    "input_per_million",
+    "output_per_million",
+    "max_cost",
+    "max_output_tokens",
+    "max_requests",
+    "max_total_tokens",
+    "model",
+    "effort"
+  ],
+  "title": "AnthropicPolicy",
+  "type": "object"
+}

@@ -1,0 +1,340 @@
+{
+  "$defs": {
+    "BlindCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "applicability": {
+          "enum": [
+            "required",
+            "optional",
+            "inapplicable"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "nonempty",
+            "length",
+            "required_literal",
+            "forbidden_literal",
+            "citation",
+            "fact"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "unit_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unit Id"
+        },
+        "min_chars": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Chars"
+        },
+        "max_chars": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Chars"
+        },
+        "literal": {
+          "anyOf": [
+            {
+              "maxLength": 100000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Literal"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "question",
+        "applicability",
+        "kind",
+        "unit_id",
+        "min_chars",
+        "max_chars",
+        "literal"
+      ],
+      "title": "BlindCriterion",
+      "type": "object"
+    },
+    "BlindTask": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Identity",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "position": {
+          "maximum": 255,
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        },
+        "artifact": {
+          "$ref": "#/$defs/ScoringArtifact"
+        },
+        "rubric_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Rubric Digest",
+          "type": "string"
+        },
+        "instructions": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Instructions",
+          "type": "string"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/BlindCriterion"
+          },
+          "maxItems": 256,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "sources_state": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable"
+          ],
+          "title": "Sources State",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/EvidenceSource"
+          },
+          "maxItems": 256,
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "identity",
+        "task_id",
+        "position",
+        "artifact",
+        "rubric_digest",
+        "instructions",
+        "criteria",
+        "sources_state",
+        "sources"
+      ],
+      "title": "BlindTask",
+      "type": "object"
+    },
+    "EvidenceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 100000,
+          "title": "Text",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "text",
+        "sha256"
+      ],
+      "title": "EvidenceSource",
+      "type": "object"
+    },
+    "ScoringArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/$defs/ScoringUnit"
+          },
+          "maxItems": 256,
+          "title": "Units",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sha256",
+        "units"
+      ],
+      "title": "ScoringArtifact",
+      "type": "object"
+    },
+    "ScoringUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "social_post"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "kind",
+        "content"
+      ],
+      "title": "ScoringUnit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-blind-packet-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "packet_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Packet Id",
+      "type": "string"
+    },
+    "rater_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Rater Id",
+      "type": "string"
+    },
+    "issued_at": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Issued At",
+      "type": "string"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/BlindTask"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Tasks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "format",
+    "session_id",
+    "packet_id",
+    "rater_id",
+    "issued_at",
+    "tasks"
+  ],
+  "title": "BlindPacket",
+  "type": "object"
+}

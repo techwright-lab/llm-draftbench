@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "InspectMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "sdk_version": {
+          "const": "0.3.223",
+          "title": "Sdk Version",
+          "type": "string"
+        },
+        "requested_model": {
+          "const": "draftbench-fixture",
+          "title": "Requested Model",
+          "type": "string"
+        },
+        "served_model": {
+          "const": "draftbench-fixture",
+          "title": "Served Model",
+          "type": "string"
+        },
+        "status": {
+          "const": "success",
+          "title": "Status",
+          "type": "string"
+        },
+        "stop_reason": {
+          "const": "stop",
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "native_output": {
+          "additionalProperties": true,
+          "title": "Native Output",
+          "type": "object"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Usage"
+        },
+        "latency_seconds": {
+          "minimum": 0,
+          "title": "Latency Seconds",
+          "type": "number"
+        },
+        "provider_latency_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider Latency Seconds"
+        },
+        "cost_usd": {
+          "title": "Cost Usd",
+          "type": "null"
+        },
+        "charge_status": {
+          "const": "not_applicable_fixture",
+          "title": "Charge Status",
+          "type": "string"
+        },
+        "generation_config": {
+          "additionalProperties": true,
+          "title": "Generation Config",
+          "type": "object"
+        },
+        "prompt_sha256": {
+          "title": "Prompt Sha256",
+          "type": "string"
+        },
+        "native_request": {
+          "additionalProperties": true,
+          "title": "Native Request",
+          "type": "object"
+        },
+        "dependency_versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Dependency Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "sdk_version",
+        "requested_model",
+        "served_model",
+        "status",
+        "stop_reason",
+        "native_output",
+        "usage",
+        "latency_seconds",
+        "provider_latency_seconds",
+        "cost_usd",
+        "charge_status",
+        "generation_config",
+        "prompt_sha256",
+        "native_request",
+        "dependency_versions"
+      ],
+      "title": "InspectMetadata",
+      "type": "object"
+    },
+    "PublicationUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "social_post"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "kind",
+        "content"
+      ],
+      "title": "PublicationUnit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "adapter": {
+      "const": "inspect-fixture",
+      "title": "Adapter",
+      "type": "string"
+    },
+    "adapter_version": {
+      "const": "1",
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "synthetic": {
+      "const": true,
+      "title": "Synthetic",
+      "type": "boolean"
+    },
+    "role": {
+      "enum": [
+        "writer",
+        "reviewer",
+        "revision"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "parent_digests": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Parent Digests",
+      "type": "object"
+    },
+    "units": {
+      "items": {
+        "$ref": "#/$defs/PublicationUnit"
+      },
+      "maxItems": 256,
+      "title": "Units",
+      "type": "array"
+    },
+    "feedback": {
+      "anyOf": [
+        {
+          "maxLength": 100000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Feedback"
+    },
+    "inspect": {
+      "$ref": "#/$defs/InspectMetadata"
+    }
+  },
+  "required": [
+    "schema_version",
+    "adapter",
+    "adapter_version",
+    "synthetic",
+    "role",
+    "request_digest",
+    "parent_digests",
+    "units",
+    "feedback",
+    "inspect"
+  ],
+  "title": "InspectResult",
+  "type": "object"
+}

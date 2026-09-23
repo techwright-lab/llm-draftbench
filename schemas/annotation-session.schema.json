@@ -1,0 +1,232 @@
+{
+  "$defs": {
+    "Assignment": {
+      "additionalProperties": false,
+      "properties": {
+        "rater_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Rater Key",
+          "type": "string"
+        },
+        "rater_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Rater Id",
+          "type": "string"
+        },
+        "packet_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Packet Id",
+          "type": "string"
+        },
+        "packet_identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Packet Identity",
+          "type": "string"
+        },
+        "packet_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Packet Digest",
+          "type": "string"
+        },
+        "template_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Template Digest",
+          "type": "string"
+        },
+        "packet_path": {
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+          "title": "Packet Path",
+          "type": "string"
+        },
+        "template_path": {
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+          "title": "Template Path",
+          "type": "string"
+        },
+        "task_mappings": {
+          "items": {
+            "$ref": "#/$defs/TaskMapping"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Task Mappings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rater_key",
+        "rater_id",
+        "packet_id",
+        "packet_identity",
+        "packet_digest",
+        "template_digest",
+        "packet_path",
+        "template_path",
+        "task_mappings"
+      ],
+      "title": "Assignment",
+      "type": "object"
+    },
+    "TaskMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Case Identity",
+          "type": "string"
+        },
+        "unit_ids": {
+          "maxProperties": 256,
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._-]*$": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Unit Ids",
+          "type": "object"
+        },
+        "source_ids": {
+          "maxProperties": 256,
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._-]*$": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Source Ids",
+          "type": "object"
+        },
+        "criterion_ids": {
+          "maxProperties": 256,
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._-]*$": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Criterion Ids",
+          "type": "object"
+        }
+      },
+      "required": [
+        "task_id",
+        "case_id",
+        "case_identity",
+        "unit_ids",
+        "source_ids",
+        "criterion_ids"
+      ],
+      "title": "TaskMapping",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-annotation-session-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "created_at": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created At",
+      "type": "string"
+    },
+    "source_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Digest",
+      "type": "string"
+    },
+    "rubric_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Rubric Digest",
+      "type": "string"
+    },
+    "roster_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Roster Digest",
+      "type": "string"
+    },
+    "assignments": {
+      "items": {
+        "$ref": "#/$defs/Assignment"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Assignments",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "format",
+    "session_id",
+    "created_at",
+    "source_digest",
+    "rubric_digest",
+    "roster_digest",
+    "assignments"
+  ],
+  "title": "AnnotationManifest",
+  "type": "object"
+}

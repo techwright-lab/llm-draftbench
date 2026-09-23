@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "ReleaseSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "maxItems": 4096,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "format": {
+          "const": "draftbench-release-selection-v1",
+          "title": "Format",
+          "type": "string"
+        },
+        "panels": {
+          "items": {
+            "enum": [
+              "writer",
+              "reviewer",
+              "revision"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Panels",
+          "type": "array"
+        }
+      },
+      "required": [
+        "format",
+        "panels",
+        "evidence_ids"
+      ],
+      "title": "ReleaseSelection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "approved": {
+      "const": true,
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "declared_reviewer": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Declared Reviewer",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-release-approval-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "projection_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Projection Digest",
+      "type": "string"
+    },
+    "reviewer_kind": {
+      "enum": [
+        "human",
+        "synthetic"
+      ],
+      "title": "Reviewer Kind",
+      "type": "string"
+    },
+    "rights_attestation": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Rights Attestation",
+      "type": "string"
+    },
+    "selection": {
+      "$ref": "#/$defs/ReleaseSelection"
+    },
+    "source_report_identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Report Identity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "format",
+    "approved",
+    "source_report_identity",
+    "projection_digest",
+    "reviewer_kind",
+    "declared_reviewer",
+    "rights_attestation",
+    "selection"
+  ],
+  "title": "ReleaseApproval",
+  "type": "object"
+}

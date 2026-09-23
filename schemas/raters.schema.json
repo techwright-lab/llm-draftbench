@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "Observation_Literal__known____unknown____unavailable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable']]",
+      "type": "object"
+    },
+    "Observation_Literal__known____unknown____unavailable____inapplicable___": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable",
+            "inapplicable"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "state",
+        "value"
+      ],
+      "title": "Observation[Literal['known', 'unknown', 'unavailable', 'inapplicable']]",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "human",
+            "model",
+            "workflow",
+            "synthetic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "version": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable___"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        },
+        "served_model": {
+          "$ref": "#/$defs/Observation_Literal__known____unknown____unavailable____inapplicable___"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "version",
+        "requested_model",
+        "served_model"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "RaterSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "rater_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Rater Key",
+          "type": "string"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "independence": {
+          "enum": [
+            "independent",
+            "same_system",
+            "unknown"
+          ],
+          "title": "Independence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rater_key",
+        "producer",
+        "independence"
+      ],
+      "title": "RaterSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "identity": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Identity",
+      "type": "string"
+    },
+    "format": {
+      "const": "draftbench-raters-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "raters": {
+      "items": {
+        "$ref": "#/$defs/RaterSpec"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Raters",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "format",
+    "raters"
+  ],
+  "title": "RaterRoster",
+  "type": "object"
+}

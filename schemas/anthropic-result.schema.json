@@ -1,0 +1,152 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "const": "anthropic",
+      "title": "Adapter",
+      "type": "string"
+    },
+    "sdk_version": {
+      "const": "0.84.0",
+      "title": "Sdk Version",
+      "type": "string"
+    },
+    "provenance": {
+      "enum": [
+        "fixture",
+        "provider"
+      ],
+      "title": "Provenance",
+      "type": "string"
+    },
+    "native_request": {
+      "additionalProperties": true,
+      "title": "Native Request",
+      "type": "object"
+    },
+    "requested_model": {
+      "title": "Requested Model",
+      "type": "string"
+    },
+    "served_model": {
+      "title": "Served Model",
+      "type": "string"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Request Id"
+    },
+    "completion_id": {
+      "title": "Completion Id",
+      "type": "string"
+    },
+    "native_output": {
+      "additionalProperties": true,
+      "title": "Native Output",
+      "type": "object"
+    },
+    "output": {
+      "title": "Output",
+      "type": "string"
+    },
+    "usage": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Usage"
+    },
+    "provider_latency_seconds": {
+      "title": "Provider Latency Seconds",
+      "type": "null"
+    },
+    "latency_seconds": {
+      "minimum": 0,
+      "title": "Latency Seconds",
+      "type": "number"
+    },
+    "cost_upper_estimate": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Cost Upper Estimate"
+    },
+    "currency": {
+      "title": "Currency",
+      "type": "string"
+    },
+    "charge_status": {
+      "enum": [
+        "not_applicable_fixture",
+        "unreconciled",
+        "unknown"
+      ],
+      "title": "Charge Status",
+      "type": "string"
+    },
+    "status": {
+      "const": "success",
+      "title": "Status",
+      "type": "string"
+    },
+    "stop_reason": {
+      "const": "end_turn",
+      "title": "Stop Reason",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "parent_digests": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Parent Digests",
+      "type": "object"
+    }
+  },
+  "required": [
+    "adapter",
+    "sdk_version",
+    "provenance",
+    "native_request",
+    "requested_model",
+    "served_model",
+    "request_id",
+    "completion_id",
+    "native_output",
+    "output",
+    "usage",
+    "provider_latency_seconds",
+    "latency_seconds",
+    "cost_upper_estimate",
+    "currency",
+    "charge_status",
+    "status",
+    "stop_reason",
+    "request_digest",
+    "parent_digests"
+  ],
+  "title": "AnthropicResult",
+  "type": "object"
+}
