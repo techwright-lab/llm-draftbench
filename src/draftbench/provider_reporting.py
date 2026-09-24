@@ -17,17 +17,59 @@ from .workflow import _directory, _run_lock
 FORMAT = "draftbench-openai-run-v1"
 
 
-def _prompt(manifest, work, ledger, store):
-    parents = {dep: ledger.state(dep)["result_digest"] for dep in work["dependencies"]}
+def _envelope(manifest, work, parents, outputs, external):
     return {
         "input": manifest["inputs"][work["case_id"]][work["role"]],
         "role": work["role"],
         "work_id": work["work_id"],
         "parent_digests": parents,
-        "parent_outputs": {
-            dep: store.get_json(ref)["output"] for dep, ref in parents.items()
-        },
+        "parent_outputs": outputs,
+        "external_input": external if work["role"] == "revision" else None,
     }
+
+
+def _prompt(manifest, work, ledger, store, external=None):
+    parents = {dep: ledger.state(dep)["result_digest"] for dep in work["dependencies"]}
+    return _envelope(
+        manifest,
+        work,
+        parents,
+        {dep: store.get_json(ref)["output"] for dep, ref in parents.items()},
+        external,
+    )
+
+
+def work_prompt(work, envelope):
+    """Exact native messages sent for one work item, derived from custody only."""
+    from .adapters.replay_contract import (
+        ROLE_SCHEMAS,
+        parse_draft,
+        replay_prompt,
+        reviewer_messages,
+        revision_messages,
+    )
+
+    role, packet = work["role"], envelope["input"]
+    outputs = envelope["parent_outputs"]
+    messages = packet["messages"]
+    if role == "reviewer":
+        (subject,) = work["dependencies"]
+        (exported,) = packet["drafts"]
+        messages = reviewer_messages(
+            messages, exported["units"][0]["content"], parse_draft(outputs[subject])
+        )
+    elif role == "revision":
+        if envelope["external_input"] is None:
+            raise ValueError("review_replay_required")
+        draft, review = work["dependencies"]
+        messages = revision_messages(
+            envelope["external_input"],
+            case_id=work["case_id"],
+            draft_output=outputs[draft],
+            review_output=outputs[review],
+            system=messages[0]["content"],
+        )
+    return replay_prompt(messages, ROLE_SCHEMAS[role])
 
 
 def _manifest(root, ledger, store):
@@ -52,10 +94,13 @@ def _report(ledger, store, manifest):
     for work in ledger.plan():
         state = ledger.state(work["work_id"])
         if state["request_digest"]:
-            envelope = _prompt(manifest, work, ledger, store)
+            saved = store.get_json(state["request_digest"])
+            envelope = _prompt(
+                manifest, work, ledger, store, saved.get("external_input")
+            )
             if digest(envelope) != state["request_digest"]:
                 raise ValueError("request_identity_mismatch")
-            store.get(state["request_digest"])
+            prompt = work_prompt(work, envelope)
             receipt_path = ledger._path.parent / f"attempt-{state['attempt_id']}.json"
             if (
                 state["state"] in ("failed", "limited")
@@ -68,27 +113,20 @@ def _report(ledger, store, manifest):
                 if (
                     receipt.get("request_digest") != state["request_digest"]
                     or receipt.get("provenance") != manifest["provenance"]
-                    or receipt.get("native_request")
-                    != native_request(policy, canonical_bytes(envelope).decode())
+                    or receipt.get("native_request") != native_request(policy, prompt)
                     or receipt.get("parent_digests") != envelope["parent_digests"]
                 ):
                     raise ValueError("invalid_provider_receipt")
             if state["result_digest"]:
                 result = store.get_json(state["result_digest"])
 
-                verify_result(
-                    result,
-                    policy,
-                    canonical_bytes(envelope).decode(),
-                    manifest["provenance"],
-                )
+                verify_result(result, policy, prompt, manifest["provenance"])
                 if (
                     result["request_digest"] != state["request_digest"]
                     or result["parent_digests"] != envelope["parent_digests"]
                     or result["provenance"] != manifest["provenance"]
                     or result["status"] != "success"
-                    or result["native_request"]
-                    != native_request(policy, canonical_bytes(envelope).decode())
+                    or result["native_request"] != native_request(policy, prompt)
                 ):
                     raise ValueError("invalid_provider_result")
     return {
@@ -188,15 +226,15 @@ def provider_bundle(snapshot, rights):
             raise ValueError("invalid_provider_snapshot")
         if row["request_digest"]:
             parents = {dep: by_id[dep]["result_digest"] for dep in work["dependencies"]}
-            envelope = {
-                "input": manifest["inputs"][work["case_id"]][work["role"]],
-                "role": work["role"],
-                "work_id": work["work_id"],
-                "parent_digests": parents,
-                "parent_outputs": {
-                    dep: by_id[dep]["result"]["output"] for dep in parents
-                },
-            }
+            if type(row["request"]) is not dict:
+                raise ValueError("invalid_provider_snapshot")
+            envelope = _envelope(
+                manifest,
+                work,
+                parents,
+                {dep: by_id[dep]["result"]["output"] for dep in parents},
+                row["request"].get("external_input"),
+            )
             if row["request"] != envelope or digest(envelope) != row["request_digest"]:
                 raise ValueError("request_identity_mismatch")
         elif row["request"] is not None or row["result_digest"]:
@@ -206,10 +244,7 @@ def provider_bundle(snapshot, rights):
             if digest(result) != row["result_digest"]:
                 raise ValueError("invalid_provider_snapshot")
             verify_result(
-                result,
-                policy,
-                canonical_bytes(row["request"]).decode(),
-                manifest["provenance"],
+                result, policy, work_prompt(work, envelope), manifest["provenance"]
             )
             if (
                 result["request_digest"] != row["request_digest"]

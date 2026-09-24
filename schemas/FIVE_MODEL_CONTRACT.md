@@ -9,16 +9,20 @@ compatibility**. No credentials or live inference are needed for this contract.
 
 ## Endpoints and pinned SDKs
 
-- OpenAI `openai==2.29.0`, `httpx==0.28.1`: one non-streaming
-  `POST https://api.openai.com/v1/chat/completions`; `n=1`, `store=false`,
-  `service_tier=default`. Explicit `reasoning_effort`: Astra low/medium/high/xhigh/max;
-  Sol/Luna also permit none. No sampling parameters, logprobs, tools, caching
-  directives, batch jobs, fast processing, retries or rerolls.
+- OpenAI `openai==2.29.0`, `httpx==0.28.1`: one non-streaming Responses API
+  `POST https://api.openai.com/v1/responses` (the API TrustGrowth uses);
+  `instructions` = exported system message, `input` = one user item, strict
+  `text.format` json_schema, `store=false`, `service_tier=default`. Explicit
+  `reasoning.effort`: Astra low/medium/high/xhigh/max; Sol/Luna also permit none.
+  No sampling parameters, logprobs, tools, `include`, caching directives, batch
+  jobs, fast processing, retries or rerolls.
 - Anthropic `anthropic==0.84.0`, `httpx==0.28.1`: one non-streaming
   `POST https://api.anthropic.com/v1/messages`, `anthropic-version=2023-06-01`,
   `service_tier=standard_only`, `inference_geo=global` (not an ambient workspace
-  regional default). Explicit `thinking.type=adaptive` and
-  `output_config.effort`; Sonnet also supports disabled thinking. Opus cannot
+  regional default). The exported system message is a `system` text block and the
+  user message one text block. Explicit `thinking.type=adaptive`,
+  `output_config.effort` and `output_config.format` (json_schema structured
+  output); Sonnet also supports disabled thinking. Opus cannot
   disable thinking. No manual thinking budgets, sampling parameters, assistant
   prefills, tools, loops, cache directives or batching. Display is omitted.
 - SDK constructors and signatures were inspected before use. The newer Anthropic
@@ -28,10 +32,19 @@ compatibility**. No credentials or live inference are needed for this contract.
   Credentials are explicit constructor arguments, including an empty Anthropic
   auth token to prevent ambient-token discovery. Fixture tokens are synthetic.
 
-`max_output_tokens` maps to OpenAI `max_completion_tokens` or Anthropic
+`max_output_tokens` maps to OpenAI `max_output_tokens` or Anthropic
 `max_tokens`, and caps **thinking plus visible output**, not just answer text.
-The pilot deliberately caps this allowance at 32,768 and prompt UTF-8 at 100,000
-bytes. This is a supported subset, not a claim about the providers' maximums.
+Policies cap this allowance at 32,768 and the serialized replay prompt at 100,000
+UTF-8 bytes; the pilot uses TrustGrowth's 16,000. This is a supported subset,
+not a claim about the providers' maximums.
+
+Every request is a native replay (`draftbench-native-replay-v1`): exactly one
+system and one user message plus a schema name from
+`draftbench.adapters.replay_contract.SCHEMAS`, the TrustGrowth
+`SeoContentSchema` and `ReviewLedgerSchema` pinned at TrustGrowth revision
+`1937049452c757dc346da01017ac50866fbeb169`. Source sidecars and evidence files
+never enter a prompt; a role input with evidence is refused
+(`evidence_not_supported`).
 
 ## Frozen pricing provenance, not live tariff verification
 
@@ -101,7 +114,7 @@ as a proven token limit:
   of ambient Decimal precision/traps. Usage never releases capacity.
 
 These conservative reservations may stop a run before every role is complete.
-For example, Astra at a 100-token output cap cannot complete three requests within
+For example, Astra at a 100-token output cap cannot complete four requests within
 US$50 under this bound. An incomplete cap-limited report is intentional; do not
 claim that every five-model comparison fits the budget. Improving bound tightness
 requires separately verified input accounting, not lowering a guessed quote.
@@ -132,7 +145,10 @@ Missing usage remains unknown. HTTP errors retain safe request ID/status/code,
 never provider error text, credentials or arbitrary headers. Local wall time is
 not provider latency; native provider latency remains unknown.
 
-Anthropic output is the concatenation of text blocks only. Thinking and redacted
+OpenAI output is the `output_text` of exactly one assistant message; reasoning
+items stay private native evidence. `completed` is success, `incomplete` with
+`max_output_tokens` is limited, anything else is invalid. Anthropic output is the
+concatenation of text blocks only. Thinking and redacted
 thinking remain private opaque native evidence; they are not visible answers,
 parent prompts or score text. `output_tokens` already includes thinking; the
 `thinking_tokens` breakdown is never added again. Cache read, cache creation and
@@ -154,10 +170,15 @@ through `CampaignBudget.create(path)` and reuse its path for all fixture command
 ```
 draftbench openai fixture-run suite.json --policy astra.json --output astra-run --campaign campaign.sqlite3 --max-steps 1
 draftbench openai fixture-resume astra-run --campaign campaign.sqlite3
+draftbench openai fixture-resume astra-run --campaign campaign.sqlite3 --revision-input review-replay.json
 draftbench anthropic fixture-run suite.json --policy opus.json --output opus-run --campaign campaign.sqlite3 --max-steps 1
 draftbench anthropic fixture-resume opus-run --campaign campaign.sqlite3
 draftbench anthropic prepare opus-run --rights rights.json --output prepared
 ```
+
+Runs plan four calls per case: writer, reviewer, revision and a reviewer of the
+revision. The revision waits, without reserving, until a TrustGrowth review replay
+response is supplied (`--revision-input`; see the operator guide).
 
 For explicit three-model live operation, see [the operator guide](PILOT_OPERATOR.md);
 preparation remains offline and dispatch requires post-merge operator approval.

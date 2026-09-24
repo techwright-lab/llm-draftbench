@@ -9,8 +9,11 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+from draftbench.adapters.replay_contract import REPLAY_RESPONSE_FORMAT, sha256_text
 from draftbench.campaign import CampaignBudget
 from draftbench.cli import main
+from draftbench.identity import strict_json_loads
+from draftbench.provider_reporting import snapshot_provider
 
 
 def denied(*args, **kwargs):
@@ -44,6 +47,35 @@ rights.write_text(
 )
 
 
+def review_replay(run):
+    """Synthetic stand-in for the TG review replay response file."""
+    rows = snapshot_provider(run)["work"]
+    case = strict_json_loads(
+        (suite.parent / "cases.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    system = case["generator"]["revision"]["input"]["messages"][0]["content"]
+    path = root / (run.name + "-review-replay.json")
+    path.write_text(
+        json.dumps(
+            {
+                "format": REPLAY_RESPONSE_FORMAT,
+                "case_id": case["case_id"],
+                "tg_revision": "19370494",
+                "draft_sha256": sha256_text(rows[0]["result"]["output"]),
+                "review_sha256": sha256_text(rows[1]["result"]["output"]),
+                "review": {"verdict": "synthetic"},
+                "revision": {
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": "Synthetic revision prompt."},
+                    ]
+                },
+            }
+        )
+    )
+    return path
+
+
 def cli(*args, allowed=(0,)):
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
@@ -60,8 +92,8 @@ for model in models:
         currency="USD",
         max_cost="50",
         max_output_tokens=100,
-        max_requests=3,
-        max_total_tokens=4000000,
+        max_requests=4,
+        max_total_tokens=4100000,
         pricing_provenance="public-docs-2026-09-23-v1",
     )
     if provider == "openai":
@@ -102,6 +134,20 @@ for model in reversed(models):
     final = cli(
         provider, "fixture-resume", run, "--campaign", campaign_path, allowed=(0, 3)
     )
+    if [row["state"] for row in snapshot_provider(run)["work"]][1:3] == [
+        "completed",
+        "planned",
+    ]:
+        final = cli(
+            provider,
+            "fixture-resume",
+            run,
+            "--campaign",
+            campaign_path,
+            "--revision-input",
+            review_replay(run),
+            allowed=(0, 3),
+        )
     assert not final["model_execution_performed"]
     assert cli(provider, "report", run) == final
     prep = root / (model + "-prepared")

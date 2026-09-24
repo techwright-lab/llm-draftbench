@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from ..models import Contract, Digest
-from .openai_contract import SDK_VERSION, _usage, native_request
+from .openai_contract import SDK_VERSION, _usage, native_request, visible_output
 from .pilot_policy import served_model_matches
 
 
@@ -27,7 +27,7 @@ class OpenAIResult(Contract):
     currency: str
     charge_status: Literal["not_applicable_fixture", "unreconciled", "unknown"]
     status: Literal["success"]
-    stop_reason: Literal["stop"]
+    stop_reason: Literal["completed"]
     request_digest: Digest
     parent_digests: dict[str, Digest]
 
@@ -36,10 +36,6 @@ def verify_result(value, policy, prompt, provenance):
     result = OpenAIResult.model_validate(value)
     native = result.native_output
     usage, estimate = _usage(native, policy)
-    choices = native.get("choices", [])
-    if len(choices) != 1:
-        raise ValueError("invalid_provider_result")
-    message = choices[0]["message"]
     if (
         result.sdk_version != SDK_VERSION
         or result.provenance != provenance
@@ -49,14 +45,8 @@ def verify_result(value, policy, prompt, provenance):
         or native.get("model") != result.served_model
         or native.get("id") != result.completion_id
         or not result.completion_id
-        or message.get("content") != result.output
-        or message.get("role") != "assistant"
-        or any(
-            message.get(key)
-            for key in ("tool_calls", "function_call", "refusal", "audio")
-        )
-        or choices[0].get("finish_reason") != "stop"
-        or native.get("service_tier") not in (None, "default")
+        or native.get("status") != "completed"
+        or result.output != visible_output(native, policy)
         or result.usage != usage
         or result.cost_upper_estimate != estimate
         or result.currency != policy.currency

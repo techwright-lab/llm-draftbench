@@ -1,9 +1,9 @@
 """Authorization/projection tests; host transport is explicitly replaced offline."""
 
 import builtins
-from pathlib import Path
 
 import pytest
+from replay_fixtures import PROMPT, SIDECAR_CANARY, SUITE, replay_for_run
 from test_openai_provider import policy, transport
 
 from draftbench.adapters.openai import digest, invoke
@@ -15,7 +15,6 @@ from draftbench.provider_workflow import (
     run_openai,
 )
 
-SUITE = Path(__file__).parents[1] / "examples/smoke/suite.json"
 RIGHTS = {
     "license": "test-only",
     "usage": "private",
@@ -26,10 +25,10 @@ RIGHTS = {
 def test_cannot_construct_live_permit():
     p = policy()
     permit = DispatchAuthorization(
-        digest({"policy": p.model_dump(mode="json"), "prompt": "p"})
+        digest({"policy": p.model_dump(mode="json"), "prompt": PROMPT})
     )
     with pytest.raises(ValueError, match="live_authorization_required"):
-        invoke(p, "p", authorization=permit, api_key="not-a-credential")
+        invoke(p, PROMPT, authorization=permit, api_key="not-a-credential")
 
 
 def test_denial_binds_policy_data_and_run_path(tmp_path, campaign):
@@ -101,11 +100,26 @@ def test_native_provider_provenance_projection_with_stub(
         api_key="unit-test-not-a-credential",
         campaign=campaign,
     )
-    assert report["provenance"] == "provider" and report["complete"]
-    assert len(calls) == 3
+    assert report["provenance"] == "provider" and not report["complete"]
+    assert len(calls) == 2
+    report = resume_openai(
+        root,
+        approve=approve,
+        api_key="unit-test-not-a-credential",
+        campaign=campaign,
+        revision_input=replay_for_run(root),
+    )
+    assert report["complete"] and len(calls) == 4
     assert "Synthetic" in calls[0]
-    assert '"parent_outputs"' in calls[1]
-    assert '"evaluator"' not in calls[0] and '"rights"' not in calls[0]
+    assert "Synthetic fixture body." in calls[1]
+    assert "Synthetic TG revision prompt." in calls[2]
+    assert all(
+        SIDECAR_CANARY not in call
+        and '"parent_outputs"' not in call
+        and '"evaluator"' not in call
+        and '"rights"' not in call
+        for call in calls
+    )
     original_import = builtins.__import__
 
     def deny_sdk(name, *args, **kwargs):
@@ -135,12 +149,12 @@ def test_native_provider_provenance_projection_with_stub(
             api_key="unit-test-not-a-credential",
             campaign=campaign,
         )
-    assert len(calls) == 3
+    assert len(calls) == 4
 
 
 @pytest.mark.parametrize(
     "stage,expected",
-    [("reserved", 3), ("in_flight", 1), ("artifact_saved", 1), ("result_saved", 3)],
+    [("reserved", 2), ("in_flight", 1), ("artifact_saved", 1), ("result_saved", 2)],
 )
 def test_actual_process_death(tmp_path, stage, expected):
     import json
@@ -200,6 +214,12 @@ with CampaignBudget.open(sys.argv[5]) as campaign:
 def test_saved_fixture_score_no_sdk(tmp_path, monkeypatch, campaign):
     run_openai(
         SUITE, tmp_path / "run", policy(), transport=transport(), campaign=campaign
+    )
+    resume_openai(
+        tmp_path / "run",
+        transport=transport(),
+        campaign=campaign,
+        revision_input=replay_for_run(tmp_path / "run"),
     )
     original_import = builtins.__import__
 

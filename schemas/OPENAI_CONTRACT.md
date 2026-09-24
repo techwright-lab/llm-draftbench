@@ -1,6 +1,6 @@
 # OpenAI GPT-6 text adapter — offline implementation, live pilot NOT authorized
 
-This is the real `openai==2.29.0` / `httpx==0.28.1` Chat Completions SDK
+This is the real `openai==2.29.0` / `httpx==0.28.1` Responses API SDK
 transport for the `openai-gpt6-text-v1` policy, verified with **in-process mocked
 HTTP only**. No provider request, credential discovery, account access, billing
 observation or live compatibility verification has occurred. The provider CLI
@@ -17,23 +17,32 @@ Model IDs, frozen tariffs, the 922,000-token context bound, served-model rules
 and source pages are in the [five-model contract](FIVE_MODEL_CONTRACT.md). The
 earlier dated GPT-4.1 policy (`openai-chat-text-v1`) was removed; policies that
 name it, or omit `contract`, fail with `unsupported_provider_contract`. No default
-model, Responses API, Azure route, tools, images/audio, prediction, streaming,
+model, Chat Completions route, Azure route, tools, images/audio, streaming,
 batch, priority/flex pricing, automatic fallback or reroll is implemented.
 
-The installed SDK's constructor and `chat.completions.create` signature and
-`CompletionCreateParamsBase.max_completion_tokens` documentation were inspected.
-The call uses `client.chat.completions.with_raw_response.create(...)` and `.parse()`;
-raw response JSON is preserved as well, avoiding SDK coercion of invalid usage.
-The SDK documents `max_completion_tokens` as including visible and reasoning
-tokens. Defensive accounting treats reported reasoning tokens as already included
-in `completion_tokens` and never adds them again. These checks do not establish that an account has access to a model.
+TrustGrowth sends writer, reviewer and revision requests through RubyLLM's
+Responses renderer, so the lab uses the same API. The installed SDK's
+`responses.create` signature was inspected. The call uses
+`client.responses.with_raw_response.create(...)` and `.parse()`; raw response JSON
+is preserved as well, avoiding SDK coercion of invalid usage. `max_output_tokens`
+includes visible and reasoning tokens. Defensive accounting treats reported
+`output_tokens_details.reasoning_tokens` as already included in `output_tokens`
+and never adds them again. These checks do not establish that an account has
+access to a model.
 
-The fixed endpoint is `https://api.openai.com/v1`, single text user message,
-`max_completion_tokens=<explicit cap>`, `n=1`, `stream=false`, `store=false`,
-`service_tier=default`, `reasoning_effort=<explicit effort>`. The message is the exact canonical serialized role-input
-and parent-output envelope, not a claim to reproduce historical message framing.
-UTF-8 source/evidence files are hash-verified and materialized in that envelope.
-Evaluator labels, producer metadata and rights text are excluded from prompts.
+The fixed endpoint is `https://api.openai.com/v1/responses`. The request mirrors
+TrustGrowth's rendered payload: `instructions` = exported system message,
+`input=[{"role": "user", "content": <exported user message>}]`,
+`text.format={"type": "json_schema", "name": <schema title>, "schema": <pinned
+schema without $schema/title>, "strict": true}`, `max_output_tokens=<explicit
+cap>`, `reasoning.effort=<explicit effort>`, `stream=false`, `store=false`,
+`service_tier=default`. RubyLLM also sends `include=["reasoning.encrypted_content"]`
+for stateless chaining; the lab never chains turns and omits it. The pilot's
+post-call JSON Schema validation remains a second check. Source sidecars,
+evidence files, evaluator labels, stored reviews, producer metadata and rights
+text never enter a prompt. Success requires `status=completed` and exactly one
+assistant message of `output_text` parts; `incomplete` with `max_output_tokens`
+is limited; refusals, tool calls and other items are invalid or uncertain.
 The SDK receives `max_retries=0`; HTTPX disables redirects and environment proxies.
 429 and read-timeout tests observe exactly one transport attempt. Network timeout
 is an HTTP operation timeout, **not** provider cancellation or a whole-job deadline.
@@ -55,8 +64,11 @@ single-use capability only after authorization, admission and durable in-flight
 transition. Resume reauthorizes the frozen scope; uncertain work is never retried.
 
 The binding covers SDK/API route, exact model, account route label, organization,
-project, currency, prices and price units, all run limits, plan/input/source bytes,
-suite/case identities, parent propagation protocol, provenance and output directory.
+project, currency, prices and price units, all run limits, plan and exported
+messages, suite/case identities, parent propagation protocol, provenance and
+output directory. The TrustGrowth review replay response used for a revision is
+not in the approval binding; it is validated against the saved writer and
+reviewer outputs and bound into that revision's request custody.
 The API key itself is never stored. The caller must ensure that the supplied key
 belongs to the approved lab-owned organization/project; this code neither probes
 account ownership nor treats a route label as proof of it. Organization and project
@@ -114,7 +126,8 @@ In-process MockTransport always yields `provenance=fixture`; the real transport 
 records `provider`, never silently relabels provider output as synthetic. Success
 artifacts preserve request/served model, native completion ID and HTTP request ID,
 exact request, output, parents, raw native JSON, nullable usage, local elapsed time,
-and null provider latency (no guessed provider-time header conversion).
+and null provider latency (no guessed provider-time header conversion). The
+completion ID field holds the Responses `id`; the stop reason is its `status`.
 
 Private content-addressed artifacts and terminal receipts use existing private
 permissions/fsync/locks. Saved results are validated against native content,
@@ -124,8 +137,8 @@ provenance and reservations only, not prompts, labels, rights or raw outputs.
 
 `openai prepare` requires a **new explicit output-rights declaration**, not an
 assumption that source rights cover generated text. Each complete writer/revision
-output is one verbatim text unit, identified by its work ID; reviewer output is not
-misparsed as structured findings. The existing mechanical-only scorer is used,
+output is one verbatim text unit, identified by its work ID; neither reviewer
+output (of the draft or of the revision) is misparsed as structured findings. The existing mechanical-only scorer is used,
 with unknown semantic reference/acceptability and no gold-label invention.
 Provider-derived scoring bundles have purpose `evaluation`; fixture-derived ones
 remain `synthetic_infrastructure`. `provider-bindings.json` contains format
@@ -161,7 +174,7 @@ outputs or rights; provider evidence remains excluded from the public release pa
 ```
 uv sync --locked --extra openai --extra anthropic
 uv run --offline --extra openai --extra anthropic pytest tests/test_openai_provider.py tests/test_openai_authorization.py
-uv run --offline --extra openai --extra anthropic python examples/providers/smoke.py examples/smoke/suite.json /new/private/smoke
+uv run --offline --extra openai --extra anthropic python examples/providers/smoke.py examples/replay/suite.json /new/private/smoke
 ```
 
 The smoke uses fixture-only account routes and a synthetic campaign database, and
@@ -172,6 +185,7 @@ static render and exact replay. It never enables a live path.
 ```
 draftbench openai fixture-run suite.json --policy fixture-policy.json --output /new/private/run --campaign /private/campaign.sqlite3
 draftbench openai fixture-resume /private/run --campaign /private/campaign.sqlite3
+draftbench openai fixture-resume /private/run --campaign /private/campaign.sqlite3 --revision-input review-replay.json
 draftbench openai report /private/run
 draftbench openai prepare /private/run --rights output-rights.json --output /new/private/prepared
 draftbench score /private/prepared/bundle.json

@@ -1,4 +1,4 @@
-"""Text-only OpenAI dispatch; SDK imported only at dispatch."""
+"""OpenAI Responses dispatch; SDK imported only at dispatch."""
 
 import time
 from importlib.metadata import version
@@ -12,6 +12,7 @@ from .openai_contract import (
 from .openai_contract import (
     _usage as _usage,
 )
+from .openai_contract import check_identity, stop_status, visible_output
 from .openai_contract import (
     digest as digest,
 )
@@ -40,7 +41,7 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
     Exception messages/bodies/headers are never recorded. Native success bodies
     are private artifacts, not public reports. Missing usage is unknown, not zero.
     """
-    from .pilot_policy import GPT6Policy, served_model_matches
+    from .pilot_policy import GPT6Policy
     from .provider_contract import parse_policy
 
     policy = parse_policy(policy)
@@ -102,7 +103,7 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
                 timeout=policy.timeout_seconds,
                 http_client=http,
             ) as client:
-                response = client.chat.completions.with_raw_response.create(**request)
+                response = client.responses.with_raw_response.create(**request)
                 # Preserve wire types even if SDK model parsing fails or coerces.
                 native = response.http_response.json()
                 result["native_output"] = native
@@ -112,13 +113,7 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
                 result.update(
                     served_model=native.get("model"), completion_id=native.get("id")
                 )
-                output = response.parse()
-                result.update(
-                    native_output=native,
-                    served_model=output.model,
-                    request_id=output._request_id,
-                    completion_id=output.id,
-                )
+                response.parse()
         usage, estimate = _usage(native, policy)
         result.update(
             usage=usage,
@@ -129,37 +124,12 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
             if usage is not None
             else "unknown",
         )
-        choices = native.get("choices", [])
-        if (
-            not served_model_matches(policy.model, output.model)
-            or len(choices) != 1
-            or type(native.get("id")) is not str
-            or not native["id"]
-            or native.get("model") != output.model
-            or native.get("service_tier") not in (None, "default")
-        ):
-            raise ValueError("invalid_native_output")
-        choice = choices[0]
-        message = choice["message"]
-        reason = choice.get("finish_reason")
-        result["stop_reason"] = reason
-        result["output"] = message.get("content")
-        if (
-            message.get("tool_calls")
-            or message.get("function_call")
-            or message.get("refusal")
-            or message.get("audio")
-            or message.get("role") != "assistant"
-            or type(result["output"]) is not str
-        ):
-            raise ValueError("invalid_native_output")
-        result["status"] = (
-            "success"
-            if reason == "stop"
-            else "limited"
-            if reason == "length"
-            else "invalid"
-        )
+        result["stop_reason"] = native.get("status")
+        check_identity(native, policy)
+        status = stop_status(native)
+        if status == "success":
+            result["output"] = visible_output(native, policy)
+        result["status"] = status
     except Exception as exc:
         # Preserve safe provider identity/status, never error text/body/headers.
         if isinstance(exc, APIStatusError):

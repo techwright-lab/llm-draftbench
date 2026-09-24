@@ -1,9 +1,9 @@
 """Budget gates and their accounting must not inherit host Decimal arithmetic."""
 
 from decimal import ROUND_DOWN, ROUND_UP, Decimal, Inexact, Rounded, localcontext
-from pathlib import Path
 
 import pytest
+from replay_fixtures import SUITE
 
 from draftbench.adapters.openai_contract import _usage
 from draftbench.adapters.pilot_policy import GPT6Policy
@@ -73,7 +73,7 @@ def test_campaign_run_cap_before_dispatch_and_resume(
 
     transport = httpx.MockTransport(handler)
     root = tmp_path / "run"
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     with CampaignBudget.create(tmp_path / "campaign.db") as budget:
         with localcontext() as ctx:
             ctx.prec = 2
@@ -96,9 +96,7 @@ def test_campaign_run_cap_before_dispatch_and_resume(
 
 def test_quote_and_usage_ignore_exponent_limits_and_traps():
     p = policy()
-    native = {
-        "usage": {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15}
-    }
+    native = {"usage": {"input_tokens": 11, "output_tokens": 4, "total_tokens": 15}}
     with localcontext() as ctx:
         ctx.prec = 2
         ctx.Emax = 1

@@ -1,31 +1,75 @@
 """Offline wire and saved-preparation custody regressions."""
 
 import json
-from pathlib import Path
 
 import pytest
-from test_openai_provider import policy, response, transport
+from replay_fixtures import (
+    PROMPT,
+    SIDECAR_CANARY,
+    SUITE,
+    openai_native,
+    openai_usage,
+    replay_for_run,
+)
 
 from draftbench.adapters.openai import invoke
-from draftbench.provider_workflow import prepare_openai, run_openai
+from draftbench.adapters.pilot_policy import GPT6Policy
+from draftbench.provider_workflow import prepare_openai, resume_openai, run_openai
 from draftbench.reporting import build_report, read_report, write_report
 
 httpx = pytest.importorskip("httpx")
 pytest.importorskip("openai")
-SUITE = Path(__file__).parents[1] / "examples/smoke/suite.json"
+
+
+def policy(**changes):
+    return GPT6Policy.model_validate(
+        dict(
+            model="gpt-6-luna",
+            account_route="lab-test",
+            project="proj_test",
+            organization="org_test",
+            currency="USD",
+            max_cost="50",
+            max_output_tokens=100,
+            max_requests=4,
+            max_total_tokens=4000000,
+            pricing_provenance="public-docs-2026-09-23-v1",
+            reasoning_effort="low",
+            verified_tariff_digest="a" * 64,
+        )
+        | changes
+    )
+
+
+def response():
+    return openai_native("gpt-6-luna", usage=openai_usage(10, 4, 5, 2))
+
+
+def transport():
+    from draftbench.adapters.openai_fixture import fixture_transport
+
+    return fixture_transport(policy().model)
+
+
+def complete_run(run, p, campaign):
+    run_openai(SUITE, run, p, transport=transport(), campaign=campaign)
+    return resume_openai(
+        run,
+        transport=transport(),
+        campaign=campaign,
+        revision_input=replay_for_run(run),
+    )
 
 
 @pytest.mark.parametrize(
     "details,field",
     [
-        ("prompt_tokens_details", "cached_tokens"),
-        ("prompt_tokens_details", "audio_tokens"),
-        ("completion_tokens_details", "reasoning_tokens"),
-        ("completion_tokens_details", "audio_tokens"),
-        ("completion_tokens_details", "accepted_prediction_tokens"),
-        ("completion_tokens_details", "rejected_prediction_tokens"),
-        ("prompt_tokens_details", "reasoning_tokens"),
-        ("completion_tokens_details", "cached_tokens"),
+        ("input_tokens_details", "cached_tokens"),
+        ("input_tokens_details", "audio_tokens"),
+        ("output_tokens_details", "reasoning_tokens"),
+        ("output_tokens_details", "audio_tokens"),
+        ("input_tokens_details", "reasoning_tokens"),
+        ("output_tokens_details", "cached_tokens"),
     ],
 )
 @pytest.mark.parametrize("value", [False, True, 0.0, "0", -1])
@@ -34,7 +78,7 @@ def test_wire_detail_counters_are_exact_integers(details, field, value):
     native["usage"][details][field] = value
     result = invoke(
         policy(),
-        "prompt",
+        PROMPT,
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=native)),
     )
     assert result["status"] == "uncertain"
@@ -49,7 +93,7 @@ def test_wire_detail_counters_are_exact_integers(details, field, value):
 def prepared(tmp_path, campaign):
     run = tmp_path / "run"
     target = tmp_path / "prepared"
-    run_openai(SUITE, run, policy(), transport=transport(), campaign=campaign)
+    assert complete_run(run, policy(), campaign)["complete"]
     rights = json.loads(SUITE.read_text())["rights"]
     prepare_openai(run, target, rights)
     return run, target
@@ -126,7 +170,7 @@ def test_preparation_custody_fails_closed(prepared, tmp_path, mutation, campaign
     elif mutation.startswith("swapped"):
         other = tmp_path / "other"
         changed = policy().model_copy(update={"account_route": "other-fixture"})
-        run_openai(SUITE, other, changed, transport=transport(), campaign=campaign)
+        complete_run(other, changed, campaign)
         prepare_openai(
             other, tmp_path / "other-prepared", json.loads(SUITE.read_text())["rights"]
         )
@@ -217,8 +261,11 @@ def test_replay_revalidates_frozen_provider_custody(prepared, field):
 def test_provider_provenance_is_not_relabelled_synthetic(prepared):
     # Construct saved-provider contract data locally, NOT a provider call.
     from draftbench.adapters.openai_contract import native_request
-    from draftbench.identity import canonical_bytes
-    from draftbench.provider_reporting import provider_bundle, snapshot_provider
+    from draftbench.provider_reporting import (
+        provider_bundle,
+        snapshot_provider,
+        work_prompt,
+    )
     from draftbench.reporting import digest, normalize_report
 
     run, _ = prepared
@@ -231,6 +278,9 @@ def test_provider_provenance_is_not_relabelled_synthetic(prepared):
         request["parent_digests"] = {
             dep: by_id[dep]["result_digest"] for dep in row["dependencies"]
         }
+        request["parent_outputs"] = {
+            dep: by_id[dep]["result"]["output"] for dep in row["dependencies"]
+        }
         row["request_digest"] = digest(request)
         result = row["result"]
         result.update(
@@ -238,7 +288,7 @@ def test_provider_provenance_is_not_relabelled_synthetic(prepared):
             charge_status="unreconciled" if result["usage"] is not None else "unknown",
             request_digest=row["request_digest"],
             parent_digests=request["parent_digests"],
-            native_request=native_request(policy(), canonical_bytes(request).decode()),
+            native_request=native_request(policy(), work_prompt(row, request)),
         )
         row["result_digest"] = digest(result)
         by_id[row["work_id"]] = row
@@ -266,7 +316,7 @@ def test_malformed_usage_retains_reservation_and_native_receipt(tmp_path, campai
     from draftbench.store import ArtifactStore
 
     native = response()
-    native["usage"]["completion_tokens_details"]["audio_tokens"] = False
+    native["usage"]["output_tokens_details"]["audio_tokens"] = False
     calls = []
 
     def handler(request):
@@ -290,6 +340,18 @@ def test_malformed_usage_retains_reservation_and_native_receipt(tmp_path, campai
     assert result["native_output"] == native
     assert result["cost_upper_estimate"] is None
     assert result["charge_status"] == "unknown"
+
+
+def test_source_sidecar_never_in_envelope_or_wire(prepared):
+    from draftbench.provider_reporting import snapshot_provider
+
+    run, _ = prepared
+    snapshot = snapshot_provider(run)
+    assert len(snapshot["work"]) == 4
+    assert SIDECAR_CANARY not in json.dumps(snapshot["manifest"]["inputs"])
+    for row in snapshot["work"]:
+        assert SIDECAR_CANARY not in json.dumps(row["request"])
+        assert SIDECAR_CANARY not in json.dumps(row["result"]["native_request"])
 
 
 def test_reporting_import_boundary_in_fresh_interpreter(prepared, tmp_path):

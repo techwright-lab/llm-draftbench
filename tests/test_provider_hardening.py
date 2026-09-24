@@ -2,20 +2,84 @@
 
 import json
 import logging
-from pathlib import Path
 
 import pytest
 
 pytest.importorskip("openai")
 pytest.importorskip("anthropic")
 
-from test_five_model_contracts import native, policy, transport  # noqa: E402
+from replay_fixtures import PROMPT, SUITE, openai_native, openai_usage  # noqa: E402
 
 from draftbench.adapters.pilot_policy import served_model_matches  # noqa: E402
-from draftbench.adapters.provider_contract import verify_result  # noqa: E402
+from draftbench.adapters.provider_contract import (  # noqa: E402
+    parse_policy,
+    verify_result,
+)
 from draftbench.provider_workflow import invoke  # noqa: E402
 
-SUITE = Path(__file__).parents[1] / "examples/smoke/suite.json"
+
+def policy(model):
+    values = dict(
+        model=model,
+        account_route="fixture-only",
+        currency="USD",
+        max_cost="50",
+        max_output_tokens=100,
+        max_requests=4,
+        max_total_tokens=4100000,
+        pricing_provenance="public-docs-2026-09-23-v1",
+    )
+    if model.startswith("gpt"):
+        values.update(
+            contract="openai-gpt6-text-v1",
+            organization="org_fixture",
+            project="proj_fixture",
+            reasoning_effort="medium",
+        )
+    else:
+        values.update(contract="anthropic-messages-text-v1", effort="high")
+    return parse_policy(values)
+
+
+def native(model):
+    if model.startswith("gpt"):
+        return openai_native(model, usage=openai_usage())
+    return dict(
+        id="fixture-message",
+        type="message",
+        role="assistant",
+        model=model,
+        content=[
+            dict(type="redacted_thinking", data="opaque-fixture"),
+            dict(type="text", text="Synthetic fixture text."),
+        ],
+        stop_reason="end_turn",
+        stop_sequence=None,
+        usage=dict(
+            input_tokens=10,
+            output_tokens=8,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            output_tokens_details=dict(thinking_tokens=5),
+        ),
+    )
+
+
+def transport(model, calls, payload=None):
+    import httpx
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json=native(model) if payload is None else payload,
+            headers={
+                "x-request-id": "fixture-request",
+                "request-id": "fixture-request",
+            },
+        )
+
+    return httpx.MockTransport(handler)
 
 
 @pytest.mark.parametrize(
@@ -48,12 +112,12 @@ def test_dated_snapshot_accepted_and_recorded_separately(model, served):
     payload = native(model)
     payload["model"] = served
     p = policy(model)
-    result = invoke(p, "synthetic", transport=transport(model, [], payload))
+    result = invoke(p, PROMPT, transport=transport(model, [], payload))
     assert result["status"] == "success", result
     assert result["requested_model"] == model
     assert result["served_model"] == served
     result.update(request_digest="0" * 64, parent_digests={})
-    verify_result(result, p, "synthetic", "fixture")
+    verify_result(result, p, PROMPT, "fixture")
 
 
 @pytest.mark.parametrize("model", ["gpt-6-luna", "claude-sonnet-5"])
@@ -61,7 +125,7 @@ def test_dated_snapshot_accepted_and_recorded_separately(model, served):
 def test_other_served_model_rejected(model, served):
     payload = native(model)
     payload["model"] = served
-    result = invoke(policy(model), "synthetic", transport=transport(model, [], payload))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], payload))
     assert result["status"] == "uncertain"
     assert result["charge_status"] == "unknown"
 
@@ -69,14 +133,14 @@ def test_other_served_model_rejected(model, served):
 def test_saved_result_cannot_claim_other_served_model():
     model = "claude-sonnet-5"
     p = policy(model)
-    result = invoke(p, "synthetic", transport=transport(model, []))
+    result = invoke(p, PROMPT, transport=transport(model, []))
     result.update(
         request_digest="0" * 64,
         parent_digests={},
         served_model="claude-sonnet-5-20260901",
     )
     with pytest.raises(ValueError, match="invalid_provider_result"):
-        verify_result(result, p, "synthetic", "fixture")
+        verify_result(result, p, PROMPT, "fixture")
 
 
 @pytest.mark.parametrize("geo,status", [("global", "success"), ("us", "uncertain")])
@@ -84,7 +148,7 @@ def test_anthropic_inference_geo(geo, status):
     model = "claude-sonnet-5"
     payload = native(model)
     payload["usage"]["inference_geo"] = geo
-    result = invoke(policy(model), "synthetic", transport=transport(model, [], payload))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], payload))
     assert result["status"] == status
 
 
@@ -118,7 +182,7 @@ def test_live_preflight_refuses_debug_logger(name):
 def test_fixture_path_ignores_log_env(monkeypatch):
     monkeypatch.setenv("OPENAI_LOG", "debug")
     model = "gpt-6-luna"
-    result = invoke(policy(model), "synthetic", transport=transport(model, []))
+    result = invoke(policy(model), PROMPT, transport=transport(model, []))
     assert result["status"] == "success"
 
 
@@ -171,6 +235,7 @@ def test_pilot_cli_reports_logging_refusal(tmp_path, monkeypatch, capsys):
 
 
 def test_provider_evidence_release_refused_explicitly(tmp_path):
+    from draftbench.adapters.openai_fixture import fixture_transport
     from draftbench.campaign import CampaignBudget
     from draftbench.provider_reporting import prepare_provider
     from draftbench.provider_workflow import run_provider
@@ -181,7 +246,11 @@ def test_provider_evidence_release_refused_explicitly(tmp_path):
     run, prepared = tmp_path / "run", tmp_path / "prepared"
     with CampaignBudget.create(tmp_path / "campaign") as campaign:
         run_provider(
-            SUITE, run, policy(model), transport=transport(model, []), campaign=campaign
+            SUITE,
+            run,
+            policy(model),
+            transport=fixture_transport(model),
+            campaign=campaign,
         )
     prepare_provider(
         run,

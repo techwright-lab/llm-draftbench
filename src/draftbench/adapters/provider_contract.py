@@ -32,7 +32,7 @@ def transport_contract(policy):
     return {
         "sdk_version": openai_contract.SDK_VERSION,
         "base_url": openai_contract.BASE_URL,
-        "api": "chat.completions",
+        "api": "responses",
     }
 
 

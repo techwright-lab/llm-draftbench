@@ -3,7 +3,6 @@
 import multiprocessing
 import os
 from decimal import Decimal, localcontext
-from pathlib import Path
 
 import pytest
 
@@ -170,7 +169,8 @@ def test_workflow_reservation_precedes_dispatch_and_resume_requires_campaign(
         raise KeyboardInterrupt()
 
     monkeypatch.setattr(workflow, "invoke", interrupted)
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    from replay_fixtures import SUITE as suite
+
     with CampaignBudget.create(tmp_path / "campaign.db") as budget:
         for i in range(2):
             root = tmp_path / f"run-{i}"

@@ -174,6 +174,10 @@ def _parser() -> argparse.ArgumentParser:
             sub.add_argument("run_dir")
             if name == "fixture-resume":
                 sub.add_argument("--campaign")
+                sub.add_argument(
+                    "--revision-input",
+                    help="TG review replay response for the pending revision",
+                )
     pilot = commands.add_parser(
         "pilot", help="Explicit bounded pilot; preparation is offline"
     )
@@ -181,15 +185,7 @@ def _parser() -> argparse.ArgumentParser:
     prep = pilots.add_parser(
         "prepare", help="Freeze private plan; no credentials or network"
     )
-    for name in (
-        "suite",
-        "config",
-        "tariff",
-        "writer-schema",
-        "reviewer-schema",
-        "output",
-        "plan",
-    ):
+    for name in ("suite", "config", "tariff", "output", "plan"):
         prep.add_argument("--" + name, required=True)
     check = pilots.add_parser(
         "preflight", help="Revalidate exact plan offline; never approve"
@@ -233,15 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = pilot.prepare(
                     **{
                         key: getattr(args, key)
-                        for key in (
-                            "suite",
-                            "config",
-                            "tariff",
-                            "writer_schema",
-                            "reviewer_schema",
-                            "output",
-                            "plan",
-                        )
+                        for key in ("suite", "config", "tariff", "output", "plan")
                     }
                 )
             elif args.pilot_command == "preflight":
@@ -403,6 +391,9 @@ def _provider(args):
                 args.run_dir,
                 transport=fixture_transport(policy.model),
                 campaign=campaign,
+                revision_input=read_json(args.revision_input)
+                if args.revision_input
+                else None,
             )
         else:
             result = report_provider(args.run_dir)

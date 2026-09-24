@@ -1,6 +1,15 @@
 import json
 
 import pytest
+from replay_fixtures import (
+    PROMPT,
+    SUITE,
+    SYSTEM,
+    USER,
+    openai_native,
+    openai_usage,
+    replay_for_run,
+)
 
 from draftbench.adapters.openai import invoke
 from draftbench.adapters.pilot_policy import GPT6Policy
@@ -17,7 +26,7 @@ def policy(**changes):
             currency="USD",
             max_cost="50",
             max_output_tokens=100,
-            max_requests=3,
+            max_requests=4,
             max_total_tokens=4000000,
             pricing_provenance="public-docs-2026-09-23-v1",
             reasoning_effort="low",
@@ -28,26 +37,11 @@ def policy(**changes):
 
 
 def response():
-    return {
-        "id": "chatcmpl-test",
-        "object": "chat.completion",
-        "created": 1,
-        "model": "gpt-6-luna",
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": "fixture text"},
-                "finish_reason": "stop",
-            }
-        ],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 4,
-            "total_tokens": 14,
-            "prompt_tokens_details": {"cached_tokens": 5},
-            "completion_tokens_details": {"reasoning_tokens": 2},
-        },
-    }
+    return openai_native(
+        "gpt-6-luna",
+        text="fixture text",
+        usage=openai_usage(i=10, o=4, cached=5, reasoning=2),
+    )
 
 
 pytest.importorskip("openai")
@@ -64,12 +58,20 @@ def test_real_sdk_wire():
             200, json=response(), headers={"x-request-id": "req_test"}
         )
 
-    result = invoke(policy(), "exact prompt", transport=httpx.MockTransport(handler))
+    result = invoke(policy(), PROMPT, transport=httpx.MockTransport(handler))
     assert len(calls) == 1
+    assert calls[0].url == "https://api.openai.com/v1/responses"
     body = json.loads(calls[0].content)
-    assert body["max_completion_tokens"] == 100
-    assert body["n"] == 1 and body["store"] is False and body["stream"] is False
-    assert body["reasoning_effort"] == "low"
+    assert body["max_output_tokens"] == 100
+    assert body["store"] is False and body["stream"] is False
+    assert body["reasoning"] == {"effort": "low"}
+    assert body["instructions"] == SYSTEM
+    assert body["input"] == [{"role": "user", "content": USER}]
+    fmt = body["text"]["format"]
+    assert fmt["type"] == "json_schema" and fmt["name"] == "SeoContentSchema"
+    assert fmt["strict"] is True and fmt["schema"]["additionalProperties"] is False
+    assert "$schema" not in fmt["schema"] and "title" not in fmt["schema"]
+    assert not set(body) & {"n", "max_completion_tokens", "messages"}
     assert result["provenance"] == "fixture"
     assert result["request_id"] == "req_test"
     assert result["output"] == "fixture text"
@@ -112,11 +114,11 @@ def test_legacy_or_missing_contract_rejected(contract):
         (None, "success"),
         ({}, "uncertain"),
         (
-            {"prompt_tokens": 10, "completion_tokens": 101, "total_tokens": 111},
+            {"input_tokens": 10, "output_tokens": 101, "total_tokens": 111},
             "uncertain",
         ),
         (
-            {"prompt_tokens": True, "completion_tokens": 1, "total_tokens": 2},
+            {"input_tokens": True, "output_tokens": 1, "total_tokens": 2},
             "uncertain",
         ),
     ],
@@ -128,7 +130,7 @@ def test_usage(usage, status):
     native["usage"] = usage
     result = invoke(
         policy(),
-        "prompt",
+        PROMPT,
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=native)),
     )
     assert result["status"] == status
@@ -143,7 +145,7 @@ def test_cache_and_reasoning_not_double_counted():
 
     result = invoke(
         policy(),
-        "prompt",
+        PROMPT,
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=response())),
     )
     assert Decimal(result["cost_upper_estimate"]) == Decimal("0.000003")
@@ -151,7 +153,7 @@ def test_cache_and_reasoning_not_double_counted():
 
 def test_denied_before_network():
     with pytest.raises(ValueError, match="live_authorization_required"):
-        invoke(policy(), "prompt")
+        invoke(policy(), PROMPT)
 
 
 @pytest.mark.parametrize("failure", ["429", "timeout"])
@@ -170,7 +172,7 @@ def test_no_retry(failure):
             headers={"x-request-id": "req_error"},
         )
 
-    result = invoke(policy(), "prompt", transport=httpx.MockTransport(handler))
+    result = invoke(policy(), PROMPT, transport=httpx.MockTransport(handler))
     assert len(calls) == 1
     assert result["status"] == "uncertain"
     assert result["charge_status"] == "unknown"
@@ -189,18 +191,24 @@ def transport():
 
 
 def test_workflow_replay_and_no_redispatch(tmp_path, monkeypatch, campaign):
-    from pathlib import Path
 
     from draftbench.provider_workflow import report_openai, resume_openai, run_openai
 
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     root = tmp_path / "run"
     first = run_openai(
         suite, root, policy(), transport=transport(), max_steps=1, campaign=campaign
     )
     assert first["attempt_count"] == 1
-    final = resume_openai(root, transport=transport(), campaign=campaign)
-    assert final["complete"] and final["attempt_count"] == 3
+    waiting = resume_openai(root, transport=transport(), campaign=campaign)
+    assert not waiting["complete"] and waiting["attempt_count"] == 2
+    final = resume_openai(
+        root,
+        transport=transport(),
+        campaign=campaign,
+        revision_input=replay_for_run(root),
+    )
+    assert final["complete"] and final["attempt_count"] == 4
     monkeypatch.setattr(
         "draftbench.provider_workflow.invoke", lambda *a, **k: pytest.fail("redispatch")
     )
@@ -211,14 +219,13 @@ def test_workflow_replay_and_no_redispatch(tmp_path, monkeypatch, campaign):
 
 @pytest.mark.parametrize(
     "stage,expected",
-    [("reserved", 3), ("in_flight", 1), ("artifact_saved", 1), ("result_saved", 3)],
+    [("reserved", 2), ("in_flight", 1), ("artifact_saved", 1), ("result_saved", 2)],
 )
 def test_crash_retains_reservation(tmp_path, stage, expected, campaign):
-    from pathlib import Path
 
     from draftbench.provider_workflow import resume_openai, run_openai
 
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     root = tmp_path / "run"
 
     def crash(name, work):
@@ -245,11 +252,10 @@ def test_crash_retains_reservation(tmp_path, stage, expected, campaign):
     "changes", [{"max_requests": 1}, {"max_total_tokens": 922100}, {"max_cost": "0.3"}]
 )
 def test_caps_never_refunded(tmp_path, changes, campaign):
-    from pathlib import Path
 
     from draftbench.provider_workflow import resume_openai, run_openai
 
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     p = policy(**changes)
     first = run_openai(
         suite, tmp_path / "run", p, transport=transport(), campaign=campaign
@@ -262,11 +268,10 @@ def test_caps_never_refunded(tmp_path, changes, campaign):
 
 
 def test_live_approval_denied_before_creation(tmp_path, campaign):
-    from pathlib import Path
 
     from draftbench.provider_workflow import run_openai
 
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     seen = []
 
     def reject(binding):
@@ -316,18 +321,24 @@ def test_native_identity_and_stops(change, status):
     elif change == "id":
         native["id"] = None
     elif change == "tool":
-        native["choices"][0]["message"]["tool_calls"] = [
+        native["output"].append(
             {
-                "id": "test",
-                "type": "function",
-                "function": {"name": "f", "arguments": "{}"},
+                "id": "fc_test",
+                "type": "function_call",
+                "call_id": "call_test",
+                "name": "f",
+                "arguments": "{}",
             }
-        ]
+        )
+    elif change == "length":
+        native["status"] = "incomplete"
+        native["incomplete_details"] = {"reason": "max_output_tokens"}
     else:
-        native["choices"][0]["finish_reason"] = change
+        native["status"] = "incomplete"
+        native["incomplete_details"] = {"reason": change}
     result = invoke(
         policy(),
-        "p",
+        PROMPT,
         transport=httpx.MockTransport(lambda r: httpx.Response(200, json=native)),
     )
     assert result["status"] == status
@@ -337,13 +348,24 @@ def test_native_identity_and_stops(change, status):
 def test_input_limit_before_dispatch():
     import httpx
 
-    p = policy(max_input_bytes=1)
+    from draftbench.adapters.replay_contract import replay_prompt
+
+    p = policy(max_input_bytes=len(PROMPT.encode()))
+    assert invoke(p, PROMPT, transport=transport())["status"] == "success"
+    over = replay_prompt(
+        [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": USER + "é"},
+        ],
+        "SeoContentSchema",
+    )
     with pytest.raises(ValueError, match="input_limit"):
-        invoke(p, "é", transport=httpx.MockTransport(lambda r: pytest.fail("dispatch")))
+        invoke(
+            p, over, transport=httpx.MockTransport(lambda r: pytest.fail("dispatch"))
+        )
 
 
 def test_timeout_receipt_retained_and_no_resume_calls(tmp_path, campaign):
-    from pathlib import Path
 
     import httpx
 
@@ -356,7 +378,7 @@ def test_timeout_receipt_retained_and_no_resume_calls(tmp_path, campaign):
         raise httpx.ReadTimeout("hidden", request=request)
 
     root = tmp_path / "run"
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     first = run_openai(
         suite,
         root,
@@ -385,4 +407,4 @@ def test_no_openai_environment_discovery(monkeypatch):
         return original(key, *args)
 
     monkeypatch.setattr(os.environ, "get", deny)
-    assert invoke(policy(), "prompt", transport=transport())["status"] == "success"
+    assert invoke(policy(), PROMPT, transport=transport())["status"] == "success"
