@@ -1,8 +1,6 @@
 {
-  "format": "article-pilot-v1",
+  "format": "article-pilot-v2",
   "account_route": "lab-standard-global",
   "organization": "org_REPLACE_WITH_LAB_ORGANIZATION",
-  "project": "proj_REPLACE_WITH_LAB_PROJECT",
-  "body_words": [1200, 1600],
-  "review_item_ids": ["promise_not_delivered", "unrun_protocol", "self_contradiction"]
+  "project": "proj_REPLACE_WITH_LAB_PROJECT"
 }

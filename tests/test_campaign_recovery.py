@@ -2,7 +2,6 @@
 
 import multiprocessing
 import os
-from pathlib import Path
 
 import pytest
 
@@ -32,7 +31,9 @@ def policy():
 
 @pytest.fixture
 def suite():
-    return Path(__file__).parents[1] / "examples/smoke/suite.json"
+    from replay_fixtures import SUITE
+
+    return SUITE
 
 
 @pytest.mark.parametrize(

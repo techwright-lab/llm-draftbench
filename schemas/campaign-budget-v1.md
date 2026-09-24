@@ -62,7 +62,9 @@ the provider CLI takes `--campaign PATH`. Runs freeze the campaign identity in t
 manifest and trusted approval binding. Running without a campaign, resuming
 without that campaign, or substituting another campaign is refused. Existing model
 allowlists, provider wire contracts, approval callbacks and credential handling
-are unchanged.
+are unchanged. The three-model pilot plans twelve calls (four per model at a
+16,000-token output cap) and reserves US$37.01 of the ceiling; see the
+[operator guide](PILOT_OPERATOR.md).
 
 The run lock serializes each run. A durable local reservation supplies the
 attempt UUID; the shared campaign reservation then commits **before** the local

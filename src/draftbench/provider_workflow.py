@@ -19,14 +19,13 @@ from .adapters.provider_contract import (
     transport_contract,
     verify_result,
 )
-from .identity import canonical_bytes
 from .ledger import Ledger
-from .loader import _Reader, load_suite
-from .models import FileReference
+from .loader import load_suite
 from .provider_reporting import (
     _manifest,
     _prompt,
     _report,
+    work_prompt,
 )
 from .provider_reporting import (
     prepare_openai as prepare_openai,
@@ -34,11 +33,20 @@ from .provider_reporting import (
 from .provider_reporting import (
     report_openai as report_openai,
 )
-from .report import ROLES, generator_payload
+from .report import ROLES
 from .store import ArtifactStore
-from .workflow import _directory, _fsync, _plan, _run_lock
+from .workflow import _directory, _fsync, _run_lock
 
 FORMAT = "draftbench-openai-run-v1"
+PROTOCOL = "draftbench-native-replay-v1"
+# The second reviewer reviews the revision: 4 calls per case. A reviewer work
+# item always reviews its single dependency, which the prompt substitutes in.
+STEPS = (
+    ("writer", "writer", ()),
+    ("reviewer", "reviewer", ("writer",)),
+    ("revision", "revision", ("writer", "reviewer")),
+    ("revision_review", "reviewer", ("revision",)),
+)
 _ISSUER = object()
 
 
@@ -68,18 +76,55 @@ class DispatchAuthorization:
         return valid
 
 
-def _input(case, role, reader):
-    payload = generator_payload(case, role)
-    if payload is None:
+def _plan(cases):
+    work = []
+    for case in cases:
+        ids = {
+            step: digest(
+                {"protocol": PROTOCOL, "case_identity": case.identity, "step": step}
+            )
+            for step, _, _ in STEPS
+        }
+        for step, role, dependencies in STEPS:
+            work.append(
+                {
+                    "work_id": ids[step],
+                    "case_id": case.case_id,
+                    "role": role,
+                    "dependencies": [ids[dep] for dep in dependencies],
+                }
+            )
+    return work
+
+
+def _input(case, role):
+    """Exported messages only. Source and evidence files never reach a prompt."""
+    from .adapters.replay_contract import native_messages
+
+    packet = getattr(case.generator, role).input
+    if packet is None:
         return None
-    for item in [payload["source"], *payload["evidence"]]:
-        if item.get("file") is not None:
-            reference = FileReference.model_validate(item["file"])
-            item["content"] = reader.reference(reference, retain=True).decode("utf-8")
-    return payload
+    if packet.evidence_ids:
+        raise ValueError("evidence_not_supported")
+    messages = native_messages([message.model_dump() for message in packet.messages])
+    drafts = {draft.draft_id: draft for draft in case.history.drafts}
+    exported = [
+        {
+            "draft_id": item,
+            "units": [unit.model_dump() for unit in drafts[item].units],
+        }
+        for item in packet.draft_ids
+    ]
+    if role == "reviewer" and (len(exported) != 1 or len(exported[0]["units"]) != 1):
+        raise ValueError("reviewer_draft_unavailable")
+    return {
+        "prompt_version": packet.prompt_version,
+        "messages": messages,
+        "drafts": exported,
+    }
 
 
-def _freeze(loaded, policy, fixture, reader):
+def _freeze(loaded, policy, fixture):
     return {
         "format": run_format(policy),
         "transport_contract": transport_contract(policy),
@@ -94,14 +139,10 @@ def _freeze(loaded, policy, fixture, reader):
             for case in loaded.cases
         },
         "plan": _plan(loaded.cases),
-        # Deliberately exclude evaluator, historical labels and rights text.
+        # Deliberately exclude evaluator, historical labels, reviews, rights text
+        # and the private source sidecar.
         "inputs": {
-            case.case_id: {
-                role: _input(case, role, reader)
-                if getattr(case.generator, role).input is not None
-                else None
-                for role in ROLES
-            }
+            case.case_id: {role: _input(case, role) for role in ROLES}
             for case in loaded.cases
         },
     }
@@ -115,9 +156,7 @@ def approval_scope(suite_path, output, policy, *, campaign=None):
     """
     policy = parse_policy(policy)
     loaded = load_suite(suite_path)
-    manifest = _freeze(
-        loaded, policy, False, _Reader(Path(suite_path).absolute().parent.resolve())
-    )
+    manifest = _freeze(loaded, policy, False)
     _bind_campaign(manifest, campaign, policy)
     scope = {"manifest": manifest, "run_directory": str(Path(output).absolute())}
     return {"binding": digest(scope), "scope": scope}
@@ -134,6 +173,7 @@ def run_provider(
     max_steps=None,
     checkpoint=None,
     campaign=None,
+    revision_input=None,
 ):
     policy = parse_policy(policy)
     loaded = load_suite(suite_path)
@@ -142,9 +182,7 @@ def run_provider(
         from .workflow import _validate_synthetic
 
         _validate_synthetic(loaded)
-    manifest = _freeze(
-        loaded, policy, fixture, _Reader(Path(suite_path).absolute().parent.resolve())
-    )
+    manifest = _freeze(loaded, policy, fixture)
     _bind_campaign(manifest, campaign, policy)
     if (
         not fixture
@@ -182,6 +220,7 @@ def run_provider(
                 checkpoint=checkpoint,
                 api_key=api_key,
                 campaign=campaign,
+                revision_input=revision_input,
             )
 
 
@@ -194,6 +233,7 @@ def resume_provider(
     max_steps=None,
     checkpoint=None,
     campaign=None,
+    revision_input=None,
 ):
     root = _directory(run_dir)
     with _run_lock(root):
@@ -220,6 +260,7 @@ def resume_provider(
                 checkpoint=checkpoint,
                 api_key=api_key,
                 campaign=campaign,
+                revision_input=revision_input,
             )
 
 
@@ -247,6 +288,7 @@ def _drive(
     checkpoint,
     api_key,
     campaign,
+    revision_input=None,
 ):
     expected = manifest.get("campaign")
     if expected is not None or campaign is not None:
@@ -291,8 +333,15 @@ def _drive(
             from .adapters.openai import preflight
 
         preflight(transport)
-        envelope = _prompt(manifest, work, ledger, store)
-        prompt = canonical_bytes(envelope).decode()
+        external = (
+            store.get_json(state["request_digest"]).get("external_input")
+            if state["request_digest"]
+            else revision_input
+        )
+        if work["role"] == "revision" and external is None:
+            break  # Waits for the TG review replay; nothing is reserved.
+        envelope = _prompt(manifest, work, ledger, store, external)
+        prompt = work_prompt(work, envelope)
         native_request(policy, prompt)  # byte cap before admission or network
         request_digest = store.put_json(envelope)
         if state["state"] == "planned":

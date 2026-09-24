@@ -107,7 +107,7 @@
       "type": "string"
     },
     "stop_reason": {
-      "const": "stop",
+      "const": "completed",
       "title": "Stop Reason",
       "type": "string"
     },

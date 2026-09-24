@@ -1,9 +1,17 @@
 """Offline real-SDK contracts: no credentials, sockets or inference."""
 
 import json
-from pathlib import Path
 
 import pytest
+from replay_fixtures import (
+    PROMPT,
+    SIDECAR_CANARY,
+    SUITE,
+    openai_native,
+    openai_usage,
+    output_text,
+    replay_for_run,
+)
 
 from draftbench.adapters.provider_contract import native_request, parse_policy
 
@@ -26,8 +34,8 @@ def policy(model):
         currency="USD",
         max_cost="50",
         max_output_tokens=100,
-        max_requests=3,
-        max_total_tokens=4000000,
+        max_requests=4,
+        max_total_tokens=4100000,
         pricing_provenance="public-docs-2026-09-23-v1",
     )
     if model.startswith("gpt"):
@@ -45,27 +53,9 @@ def policy(model):
     return parse_policy(values)
 
 
-def native(model):
+def native(model, text="Synthetic fixture text."):
     if model.startswith("gpt"):
-        return dict(
-            id="fixture-completion",
-            object="chat.completion",
-            created=0,
-            model=model,
-            choices=[
-                dict(
-                    index=0,
-                    finish_reason="stop",
-                    message=dict(role="assistant", content="Synthetic fixture text."),
-                )
-            ],
-            usage=dict(
-                prompt_tokens=10,
-                completion_tokens=8,
-                total_tokens=18,
-                completion_tokens_details=dict(reasoning_tokens=5),
-            ),
-        )
+        return openai_native(model, text, openai_usage())
     return dict(
         id="fixture-message",
         type="message",
@@ -73,7 +63,7 @@ def native(model):
         model=model,
         content=[
             dict(type="redacted_thinking", data="opaque-fixture"),
-            dict(type="text", text="Synthetic fixture text."),
+            dict(type="text", text=text),
         ],
         stop_reason="end_turn",
         stop_sequence=None,
@@ -94,7 +84,9 @@ def transport(model, calls, payload=None, status=200):
         calls.append(request)
         return httpx.Response(
             status,
-            json=native(model) if payload is None else payload,
+            json=native(model, output_text(json.loads(request.content)))
+            if payload is None
+            else payload,
             headers={
                 "x-request-id": "fixture-request",
                 "request-id": "fixture-request",
@@ -110,11 +102,11 @@ def test_real_sdk_contract(model):
 
     calls = []
     p = policy(model)
-    result = invoke(p, "synthetic", transport=transport(model, calls))
+    result = invoke(p, PROMPT, transport=transport(model, calls, native(model)))
     assert result["status"] == "success", result
     assert len(calls) == 1
     body = json.loads(calls[0].content)
-    assert body == native_request(p, "synthetic")
+    assert body == native_request(p, PROMPT)
     assert not set(body) & {
         "temperature",
         "top_p",
@@ -135,10 +127,26 @@ def test_real_sdk_contract(model):
         assert calls[0].headers["anthropic-version"] == "2023-06-01"
         assert body["thinking"] == {"type": "adaptive"}
         assert body["max_tokens"] == 100
+        assert body["system"] == [
+            {"type": "text", "text": "Synthetic system instructions."}
+        ]
+        assert body["messages"] == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Synthetic user request."}],
+            }
+        ]
+        assert body["output_config"]["format"]["type"] == "json_schema"
+        assert "strict" not in body["output_config"]["format"]
     else:
-        assert calls[0].url == "https://api.openai.com/v1/chat/completions"
-        assert body["reasoning_effort"] == "medium"
-        assert body["max_completion_tokens"] == 100
+        assert calls[0].url == "https://api.openai.com/v1/responses"
+        assert body["reasoning"] == {"effort": "medium"}
+        assert body["max_output_tokens"] == 100
+        assert body["instructions"] == "Synthetic system instructions."
+        assert body["input"] == [{"role": "user", "content": "Synthetic user request."}]
+        assert body["text"]["format"]["type"] == "json_schema"
+        assert body["text"]["format"]["name"] == "SeoContentSchema"
+        assert body["text"]["format"]["strict"] is True
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -148,7 +156,7 @@ def test_mandatory_shared_campaign(model, tmp_path):
     calls = []
     with pytest.raises(ValueError, match="campaign_required"):
         run_provider(
-            Path(__file__).parents[1] / "examples/smoke/suite.json",
+            SUITE,
             tmp_path / "run",
             policy(model),
             transport=transport(model, calls),
@@ -162,14 +170,10 @@ def test_malformed_reasoning_is_unknown(model, bad):
     from draftbench.provider_workflow import invoke
 
     data = native(model)
-    key = (
-        "completion_tokens_details"
-        if model.startswith("gpt")
-        else "output_tokens_details"
-    )
+    key = "output_tokens_details"
     detail = "reasoning_tokens" if model.startswith("gpt") else "thinking_tokens"
     data["usage"][key][detail] = bad
-    result = invoke(policy(model), "fixture", transport=transport(model, [], data))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], data))
     assert result["status"] == "uncertain"
     assert result["usage"] is None and result["cost_upper_estimate"] is None
     assert result["native_output"] == data
@@ -195,8 +199,9 @@ def test_failure_and_reasoning_limits(model, failure):
         data["usage"] = None
     if failure == "limit":
         if model.startswith("gpt"):
-            data["choices"][0]["finish_reason"] = "length"
-            data["choices"][0]["message"]["content"] = ""
+            data["status"] = "incomplete"
+            data["incomplete_details"] = {"reason": "max_output_tokens"}
+            data["output"] = data["output"][:1]
         else:
             data["stop_reason"] = "max_tokens"
             data["content"] = data["content"][:1]
@@ -217,7 +222,7 @@ def test_failure_and_reasoning_limits(model, failure):
             )
         return httpx.Response(200, json=data)
 
-    result = invoke(policy(model), "fixture", transport=httpx.MockTransport(handler))
+    result = invoke(policy(model), PROMPT, transport=httpx.MockTransport(handler))
     assert len(calls) == 1
     assert result["status"] == (
         "limited"
@@ -238,7 +243,7 @@ def test_campaign_pause_resume_custody(model, tmp_path):
     from draftbench.provider_workflow import resume_provider, run_provider
     from draftbench.reporting import build_report
 
-    suite = Path(__file__).parents[1] / "examples/smoke/suite.json"
+    suite = SUITE
     root = tmp_path / "run"
     calls = []
     with CampaignBudget.create(tmp_path / "campaign") as campaign:
@@ -256,13 +261,27 @@ def test_campaign_pause_resume_custody(model, tmp_path):
         final = resume_provider(
             root, transport=transport(model, calls), campaign=campaign
         )
-        # Astra's full-context conservative quote admits two, not three.
-        expected = 2 if model == "gpt-6-astra" else 3
+        assert len(calls) == final["states"]["completed"] == 2
+        assert final["states"]["planned"] == 2
+        final = resume_provider(
+            root,
+            transport=transport(model, calls),
+            campaign=campaign,
+            revision_input=replay_for_run(root),
+        )
+        # Astra's full-context conservative quote admits two, not four.
+        expected = 2 if model == "gpt-6-astra" else 4
         assert len(calls) == expected
         assert final["states"]["completed"] == expected
+        assert not any(SIDECAR_CANARY.encode() in call.content for call in calls)
         before = campaign.summary()
         assert (
-            resume_provider(root, transport=transport(model, calls), campaign=campaign)
+            resume_provider(
+                root,
+                transport=transport(model, calls),
+                campaign=campaign,
+                revision_input=replay_for_run(root),
+            )
             == final
         )
         assert campaign.summary() == before
@@ -298,7 +317,7 @@ def test_no_ambient_credential_reads(model, monkeypatch):
 
     monkeypatch.setattr(os.environ, "get", deny)
     assert (
-        invoke(policy(model), "fixture", transport=transport(model, []))["status"]
+        invoke(policy(model), PROMPT, transport=transport(model, []))["status"]
         == "success"
     )
 
@@ -308,11 +327,11 @@ def test_reservation_independent_decimal_context(model):
     from decimal import Inexact, Rounded, localcontext
 
     p = policy(model)
-    expected = p.reservation_total(3)
+    expected = p.reservation_total(4)
     with localcontext() as context:
         context.prec = 1
         context.traps[Inexact] = context.traps[Rounded] = True
-        assert p.reservation_total(3) == expected
+        assert p.reservation_total(4) == expected
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -326,7 +345,7 @@ def test_uncertain_campaign_never_refunded(model, tmp_path):
     with CampaignBudget.create(tmp_path / "campaign") as campaign:
         root = tmp_path / "run"
         run_provider(
-            Path(__file__).parents[1] / "examples/smoke/suite.json",
+            SUITE,
             root,
             policy(model),
             transport=transport(model, calls, data),
@@ -353,7 +372,7 @@ def test_mixed_provider_campaign_exhaustion(tmp_path):
             ("gpt-6-astra", "claude-opus-5-5", "claude-sonnet-5")
         ):
             run_provider(
-                Path(__file__).parents[1] / "examples/smoke/suite.json",
+                SUITE,
                 tmp_path / f"run{n}",
                 policy(model),
                 transport=transport(model, calls),
@@ -371,10 +390,10 @@ def test_strict_output_counter(model, value):
 
     data = native(model)
     if model.startswith("gpt"):
-        data["usage"]["completion_tokens"] = value
+        data["usage"]["output_tokens"] = value
     else:
         data["usage"]["output_tokens"] = value
-    result = invoke(policy(model), "fixture", transport=transport(model, [], data))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], data))
     assert result["status"] == "uncertain"
     assert result["cost_upper_estimate"] is None
 
@@ -387,7 +406,7 @@ def test_unverified_tariff_denied_before_live_authorization(model, tmp_path):
     with CampaignBudget.create(tmp_path / "campaign") as campaign:
         with pytest.raises(ValueError, match="verified_tariff_required"):
             run_provider(
-                Path(__file__).parents[1] / "examples/smoke/suite.json",
+                SUITE,
                 tmp_path / "run",
                 policy(model),
                 campaign=campaign,
@@ -436,14 +455,14 @@ def test_anthropic_cache_and_thinking_not_double_counted(model):
         cache_read_input_tokens=3,
         cache_creation={"ephemeral_5m_input_tokens": 4, "ephemeral_1h_input_tokens": 3},
     )
-    result = invoke(policy(model), "fixture", transport=transport(model, [], data))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], data))
     assert result["status"] == "success"
     assert result["cost_upper_estimate"] == str(
         policy(model).token_cost(10 + 2 * 7 + 3, 8)
     )
     data["usage"]["cache_creation"]["ephemeral_5m_input_tokens"] = False
     assert (
-        invoke(policy(model), "fixture", transport=transport(model, [], data))["status"]
+        invoke(policy(model), PROMPT, transport=transport(model, [], data))["status"]
         == "uncertain"
     )
 
@@ -456,7 +475,7 @@ def _mixed_sdk_worker(path, run, model, start, queue):
     calls = []
     with CampaignBudget.open(path) as campaign:
         result = run_provider(
-            Path(__file__).parents[1] / "examples/smoke/suite.json",
+            SUITE,
             run,
             policy(model),
             transport=transport(model, calls),
@@ -505,9 +524,9 @@ def test_explicit_global_route_and_usage_metadata(model):
 
     data = native(model)
     data["usage"].update(inference_geo="global", service_tier="standard")
-    result = invoke(policy(model), "fixture", transport=transport(model, [], data))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], data))
     assert result["status"] == "success"
     assert result["native_request"]["inference_geo"] == "global"
     data["usage"]["inference_geo"] = "us"
-    result = invoke(policy(model), "fixture", transport=transport(model, [], data))
+    result = invoke(policy(model), PROMPT, transport=transport(model, [], data))
     assert result["status"] == "uncertain" and result["cost_upper_estimate"] is None

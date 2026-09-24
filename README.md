@@ -57,12 +57,14 @@ Add `--max-steps 1` to pause after one synthetic invocation (exit 3); resume com
 Install `uv sync --locked --extra pilot`, then run:
 
 ```sh
-uv run --offline --extra pilot python examples/providers/smoke.py examples/smoke/suite.json /path/to/new-private-provider-smoke
+uv run --offline --extra pilot python examples/providers/smoke.py examples/replay/suite.json /path/to/new-private-provider-smoke
 ```
 
 This socket-blocked journey uses the real pinned OpenAI and Anthropic SDKs with
-**in-process MockTransport**, not a provider account. It verifies pause/resume,
-shared campaign admission, exact saved-text scoring and static report replay. The
+**in-process MockTransport**, not a provider account. It uses the synthetic
+TrustGrowth-shaped `examples/replay` suite and verifies native-role requests,
+pause/resume, the revision waiting for a review replay response, shared campaign
+admission, exact saved-text scoring and static report replay. The
 provider CLI exposes `openai` and `anthropic` `fixture-run`, `fixture-resume`,
 `report` and `prepare` as offline operations. Live dispatch is a separate
 `pilot run` / `pilot resume` command requiring exact operator approval and an
@@ -186,18 +188,24 @@ exact digest. Only the separate `pilot run` / `pilot resume` commands dispatch.
 `.env.example` is documentation, not a usable credential. Ordinary validation,
 fixtures, tests, reports, preparation and preflight never load it.
 
-The pilot fixes Luna, Sol and Sonnet 5, one writer/reviewer/revision chain per
-model, low effort, 8,192 output tokens per request, at most nine requests and one
-shared US$50 campaign. Exact external output schemas and coarse completeness
-checks stop malformed/short results without repair or paid rerolls. This is not
-an SEO-quality score or ranking; blind human review and billing reconciliation
-come later. Private content-pipeline packets stay outside this repository.
+The pilot replays TrustGrowth's own prompts on Luna, Sol and Sonnet 5: the
+exported system and user messages go out as native roles (OpenAI Responses API,
+Anthropic `system` + messages) with TrustGrowth's pinned strict output schemas,
+low effort and 16,000 output tokens per request. Each model runs writer →
+reviewer → revision → reviewer of the revision: at most twelve requests,
+reserving US$37.01 of one shared US$50 campaign. The reviewer gets the exported
+TrustGrowth reviewer payload with the lab draft substituted in; the revision
+prompt is rendered by TrustGrowth's no-write review replay, so the run pauses
+for that file between reviewer and revision. The private source sidecar is never
+sent. Schema-invalid results stop without repair or paid rerolls; length against
+the brief's target is recorded, not a stop. This is not an SEO-quality score or
+ranking; blind human review and billing reconciliation come later. Private content-pipeline packets stay outside this repository.
 Provider output text cannot be selected for public release: the run does not
 bind the input rights, so `release` refuses it with
 `provider_evidence_rights_unbound`. Aggregate panels can still be exported.
 Live runs refuse to start while `OPENAI_LOG` or `ANTHROPIC_LOG` is set
 (`sdk_debug_logging_forbidden`), because SDK debug logs print prompts. The
-portable one-user-message envelope is **not exact production-native role replay**.
+operator guide lists the remaining differences from TrustGrowth's own calls.
 Nothing automatically publishes content.
 
 ## License

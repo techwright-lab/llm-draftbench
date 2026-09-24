@@ -8,14 +8,21 @@ BASE_URL = "https://api.anthropic.com"
 
 
 def native_request(policy, prompt):
-    if type(prompt) is not str or len(prompt.encode()) > policy.max_input_bytes:
-        raise ValueError("input_limit")
+    from .replay_contract import parse_prompt, wire_schema
+
+    system, user, schema = parse_prompt(prompt, policy.max_input_bytes)
+    # Mirrors TG's RubyLLM Messages render: system and user as text blocks,
+    # structured output through output_config.format beside the effort.
     return {
         "model": policy.model,
-        "messages": [{"role": "user", "content": prompt}],
+        "system": [{"type": "text", "text": system}],
+        "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
         "max_tokens": policy.max_output_tokens,
         "thinking": {"type": policy.thinking},
-        "output_config": {"effort": policy.effort},
+        "output_config": {
+            "effort": policy.effort,
+            "format": {"type": "json_schema", "schema": wire_schema(schema)},
+        },
         "stream": False,
         "service_tier": "standard_only",
         "inference_geo": "global",
