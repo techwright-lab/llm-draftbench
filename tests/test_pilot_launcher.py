@@ -264,7 +264,8 @@ def test_legacy_config_refused(packet, config):
         pilot.prepare(**packet)
 
 
-def test_export_from_other_tg_revision_refused(packet, tmp_path):
+@pytest.mark.parametrize("version", ["0badc0de", "19370494", "1937049452c757dc"])
+def test_export_from_other_tg_revision_refused(packet, tmp_path, version):
     import shutil
 
     from draftbench.identity import canonical_bytes, identity
@@ -272,7 +273,7 @@ def test_export_from_other_tg_revision_refused(packet, tmp_path):
     suite = tmp_path / "suite"
     shutil.copytree(SUITE.parent, suite)
     case = json.loads((suite / "cases.jsonl").read_text())
-    case["generator"]["reviewer"]["input"]["prompt_version"] = "0badc0de"
+    case["generator"]["reviewer"]["input"]["prompt_version"] = version
     case["identity"] = identity(case)
     body = canonical_bytes(case) + b"\n"
     (suite / "cases.jsonl").write_bytes(body)
