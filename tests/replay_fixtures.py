@@ -105,7 +105,7 @@ def review_replay(draft_output, review_output, user="Synthetic TG revision promp
     return {
         "format": REPLAY_RESPONSE_FORMAT,
         "case_id": case()["case_id"],
-        "tg_revision": "19370494",
+        "tg_revision": "3df1b314",
         "draft_sha256": sha256_text(draft_output),
         "review_sha256": sha256_text(review_output),
         "review": {"verdict": "synthetic"},

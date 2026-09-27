@@ -190,8 +190,8 @@ fixtures, tests, reports, preparation and preflight never load it.
 
 The pilot replays TrustGrowth's own prompts on Luna, Sol and Sonnet 5: the
 exported system and user messages go out as native roles (OpenAI Responses API,
-Anthropic `system` + messages) with TrustGrowth's pinned strict output schemas,
-low effort and 16,000 output tokens per request. Each model runs writer →
+Anthropic `system` + messages) with TrustGrowth's strict output schemas and
+request settings pinned at TrustGrowth revision `3df1b314`, low effort and 16,000 output tokens per request. Each model runs writer →
 reviewer → revision → reviewer of the revision: at most twelve requests,
 reserving US$37.01 of one shared US$50 campaign. The reviewer gets the exported
 TrustGrowth reviewer payload with the lab draft substituted in; the revision

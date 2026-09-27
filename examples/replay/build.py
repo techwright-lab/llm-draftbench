@@ -30,11 +30,16 @@ def reviewer_user():
     )
     return (
         "## Site\nSynthetic (synthetic.invalid)\n\n"
-        "## The promise (from the brief)\nTitle: Synthetic exported title\n\n"
-        "Meta description: Synthetic exported meta description.\n\n"
+        "## The promise (from the brief)\nTitle: Synthetic brief\n"
         "Target keyword: synthetic fixture\nContent intent: not declared\n"
-        "Profile: seo\n\n## Sibling drafts\n\nNone.\n\n"
-        f"## The draft\n{BODY}\n\n## Items\n{items}\n"
+        "Profile: seo\n\nNotes (first 2000 characters):\nnot provided\n"
+        "SEO requirements (JSON, first 2000 characters):\nnot provided\n\n"
+        "Synthetic brief guidance.\n\n"
+        "## Draft evidence\nTitle: Synthetic exported title\n"
+        "Meta description: Synthetic exported meta description.\n"
+        "Draft metadata does not redefine the brief's promise.\n\n"
+        "## Sibling drafts\n\nNone.\n\n"
+        f"## The draft\n{BODY}\n\n\n\n## Items\n{items}\n"
         "Answer every item_id above and only those. Then list factual_issues.\n"
     )
 
@@ -58,7 +63,7 @@ def main():
     draft["units"] = [{"unit_id": "body", "kind": "text", "content": BODY}]
     case["history"]["drafts"] = [draft]
     template = case["generator"]["writer"]["input"]
-    template["prompt_version"] = "19370494"
+    template["prompt_version"] = "3df1b314"
     for role, system, user, drafts in (
         ("writer", WRITER_SYSTEM, writer_user(), []),
         ("reviewer", REVIEWER_SYSTEM, reviewer_user(), [draft["draft_id"]]),

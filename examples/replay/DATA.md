@@ -7,8 +7,9 @@ experiment, person, customer or publication.
 
 Each role input is exactly one system and one user message, as TrustGrowth
 exports them. The reviewer message holds the exported draft body between
-`## The draft` and `## Items` plus the `Title:`/`Meta description:` promise, so
-the lab can substitute its own draft. The writer message carries
+`## The draft` and `## Items` plus the `## Draft evidence` title and meta
+description, so the lab can substitute its own draft without touching the brief
+promise. The writer message carries
 `- Target Word Count: 1200`. `source.json` stands in for the private source
 sidecar; its canary text must never appear in a provider request.
 

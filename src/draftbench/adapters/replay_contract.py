@@ -9,7 +9,7 @@ import re
 
 from ..identity import canonical_bytes, strict_json_loads
 
-TG_REVISION = "1937049452c757dc346da01017ac50866fbeb169"
+TG_REVISION = "3df1b314d4d208051045624334b3096479ad4586"
 FORMAT = "draftbench-native-replay-v1"
 REPLAY_REQUEST_FORMAT = "draftbench-review-replay-request-v1"
 REPLAY_RESPONSE_FORMAT = "trust-growth-review-replay-v1"
@@ -37,9 +37,10 @@ SCHEMAS = {
                 "The article headline. Standalone string, not part of the body."
             ),
             "body": _string(
-                "The COMPLETE article in markdown. Must be 1000-3000 words. This is "
-                "the full article text — do not continue the article into other "
-                "fields."
+                "The COMPLETE article in markdown, at the brief target word count. "
+                "This is the full article text — do not continue the article into "
+                "other fields. When a source pack is supplied, cited numbers carry "
+                "[[fact:ID]] from that pack with its value and unit unchanged."
             ),
             "meta_title": _string(
                 "A separate, standalone meta title for search engine results pages. "
@@ -183,41 +184,48 @@ def parse_draft(text):
     return value
 
 
-# Mirrors the ERB in TG `review/ledger_items/user.txt.erb` (no trim mode): the
-# `<% if %>`/`<% end %>` lines around the meta description each leave a newline.
-_PROMISE = re.compile(
-    r"\nTitle: [^\n]*\n\n(?:Meta description: [^\n]*\n\n)?Target keyword: "
+# Mirrors TG `review/ledger_items/user.txt.erb` (no trim mode). Only the draft
+# evidence lines change; cited-claim pairs belong to the TG draft, so an export
+# carrying them has no body anchor and is refused.
+_EVIDENCE = re.compile(
+    r"\n## Draft evidence\nTitle: [^\n]*\nMeta description: [^\n]*\n"
+    r"Draft metadata does not redefine the brief's promise\.\n"
 )
+_BRIEF = "\n## The promise (from the brief)\n"
 
 
 def reviewer_messages(messages, exported_body, draft):
     """Substitute the lab draft into the exported TG reviewer payload.
 
-    Refuses unless the exported TG draft body sits at exactly one anchor, so a
-    template change fails closed instead of reviewing the wrong text.
+    Refuses unless the brief promise, the draft evidence and the exported TG
+    draft body each sit at exactly one anchor, in template order.
     """
     system, user = native_messages(messages)
     text = user["content"]
-    anchor = "\n## The draft\n" + exported_body + "\n\n## Items\n"
-    promises = list(_PROMISE.finditer(text))
-    if text.count(anchor) != 1 or len(promises) != 1:
+    anchor = "\n## The draft\n" + exported_body + "\n\n\n\n## Items\n"
+    evidence = list(_EVIDENCE.finditer(text))
+    if (
+        text.count(anchor) != 1
+        or text.count(_BRIEF) != 1
+        or text.count("\n## Draft evidence\n") != 1
+        or len(evidence) != 1
+    ):
         raise ValueError("reviewer_anchor_mismatch")
-    start = text.index(anchor)
-    promise = promises[0]
-    if promise.end() > start:
+    start, found = text.index(anchor), evidence[0]
+    if not text.index(_BRIEF) < found.start() < found.end() <= start:
         raise ValueError("reviewer_anchor_mismatch")
     meta = draft["meta_description"]
     replaced = (
-        text[: promise.start()]
-        + "\nTitle: "
+        text[: found.start()]
+        + "\n## Draft evidence\nTitle: "
         + draft["title"]
-        + "\n\n"
-        + (f"Meta description: {meta}\n\n" if meta.strip() else "")
-        + "Target keyword: "
-        + text[promise.end() : start]
+        + "\nMeta description: "
+        + (meta if meta.strip() else "not provided")
+        + "\nDraft metadata does not redefine the brief's promise.\n"
+        + text[found.end() : start]
         + "\n## The draft\n"
         + draft["body"]
-        + "\n\n## Items\n"
+        + "\n\n\n\n## Items\n"
         + text[start + len(anchor) :]
     )
     return [system, {"role": "user", "content": replaced}]

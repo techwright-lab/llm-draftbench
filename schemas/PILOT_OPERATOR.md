@@ -45,7 +45,7 @@ one system and one user message. They are sent **as native roles**:
 The export has no schema or request settings. The lab pins TrustGrowth's
 `SeoContentSchema` (writer, revision) and `ReviewLedgerSchema` (reviewer) and the
 settings above from TrustGrowth revision
-`1937049452c757dc346da01017ac50866fbeb169` in
+`3df1b314d4d208051045624334b3096479ad4586` in
 `draftbench.adapters.replay_contract`. `prepare` refuses a case whose
 `prompt_version` is not a prefix of that revision (`tg_revision_mismatch`); a
 newer export needs a reviewed lab update first. Saved outputs are still validated
@@ -56,13 +56,18 @@ Per role:
 - **Writer**: the exported writer messages, unchanged.
 - **Reviewer**: the exported TrustGrowth reviewer payload with the lab draft
   substituted in. The exported TrustGrowth draft body must appear exactly once
-  between `## The draft` and `## Items`, and the `Title:` /
-  `Meta description:` promise lines exactly once before it; otherwise the call is
-  refused (`reviewer_anchor_mismatch`) instead of reviewing the wrong text. The
-  meta description line follows TrustGrowth's template: present only when the
-  lab draft's meta description is not blank. Sibling drafts, profile and item
-  questions stay as exported. The second reviewer reviews the revision the
-  same way.
+  between `## The draft` and `## Items`, and the `## Draft evidence` block
+  (`Title:`, `Meta description:` and the closing "Draft metadata does not
+  redefine the brief's promise." line) exactly once between
+  `## The promise (from the brief)` and the draft; otherwise the call is refused
+  (`reviewer_anchor_mismatch`) instead of reviewing the wrong text. Only the
+  draft evidence title, meta description and body change. The brief promise
+  (title, keyword, outline, notes, SEO requirements) stays as exported, even
+  when the draft title equals the brief title. A blank lab meta description
+  reads `not provided`, as in TrustGrowth's template. An export with cited-claim
+  source pairs is refused, because those pairs describe the TrustGrowth draft.
+  Sibling drafts, profile and item questions stay as exported. The second
+  reviewer reviews the revision the same way.
 - **Revision**: the prompt rendered by TrustGrowth for this lab draft and lab
   review, from the TrustGrowth review replay (below). The lab never builds its
   own revision prompt.
@@ -111,7 +116,8 @@ Configuration:
   `account_route`, `organization` and `project`. There is no length range or
   item list to configure: the reviewer item IDs are read from the exported
   reviewer message (`- item_id: …` lines under `## Items`), and the target length
-  from `- Target Word Count: N` in the exported writer message.
+  from `- Target Word Count: N` in the exported writer message (TrustGrowth
+  renders a missing or zero brief target as 1500).
 - Writer/revision must return JSON valid against the pinned `SeoContentSchema`
   (`title`, `body`, `meta_title`, `meta_description`, `tags`); reviewers against
   `ReviewLedgerSchema` (`results`, `factual_issues`) with exactly the exported
@@ -245,7 +251,7 @@ Request, written once per model (a changed rewrite is refused):
   "case_id": "draft-123",
   "model": "gpt-6-sol",
   "stage": "draft",
-  "tg_revision": "1937049452c757dc346da01017ac50866fbeb169",
+  "tg_revision": "3df1b314d4d208051045624334b3096479ad4586",
   "draft": {"title": "…", "body": "…", "meta_title": "…", "meta_description": "…", "tags": ["…"]},
   "draft_sha256": "<sha256 of the exact saved writer output text, UTF-8>",
   "ledger": {"results": [], "factual_issues": []},

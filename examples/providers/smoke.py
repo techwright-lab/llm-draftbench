@@ -60,7 +60,7 @@ def review_replay(run):
             {
                 "format": REPLAY_RESPONSE_FORMAT,
                 "case_id": case["case_id"],
-                "tg_revision": "19370494",
+                "tg_revision": "3df1b314",
                 "draft_sha256": sha256_text(rows[0]["result"]["output"]),
                 "review_sha256": sha256_text(rows[1]["result"]["output"]),
                 "review": {"verdict": "synthetic"},
