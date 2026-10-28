@@ -65,6 +65,6 @@ def validate_campaign_manifest(manifest, policy):
             or type(identity["campaign_id"]) is not str
             or not re.fullmatch(r"[0-9a-f]{32}", identity["campaign_id"])
             or identity["currency"] != "USD"
-            or identity["ceiling_usd"] != "50.00"
+            or identity["ceiling_usd"] != (None if policy.tracking_only else "50.00")
         ):
             raise ValueError("campaign_required")

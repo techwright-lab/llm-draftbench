@@ -34,22 +34,27 @@ class PilotPolicy(TokenBudget, Contract):
     account_route: Annotated[str, Field(pattern=r"^[A-Za-z0-9._-]{1,128}$")]
     currency: Literal["USD"]
     price_unit: Literal["currency_per_million_tokens"] = "currency_per_million_tokens"
-    pricing_provenance: Literal["public-docs-2026-09-23-v1"]
+    pricing_provenance: Literal["public-docs-2026-09-23-v1", "operator-reviewed-v1"]
+    tracking_only: bool = False
     # Independent trusted-host tariff review; never inferred from archived docs.
     verified_tariff_digest: Digest | None = None
     input_per_million: Money
     output_per_million: Money
-    max_cost: Money
-    max_output_tokens: Annotated[int, Field(strict=True, ge=1, le=32768)]
-    max_requests: Annotated[int, Field(strict=True, ge=1, le=30000)]
-    max_total_tokens: Positive
-    max_input_bytes: Annotated[int, Field(strict=True, ge=1, le=100000)] = 100000
-    timeout_seconds: Annotated[int, Field(strict=True, ge=1, le=300)] = 30
+    max_cost: Money | None
+    max_output_tokens: Positive | None
+    max_requests: Annotated[int, Field(strict=True, ge=1, le=30000)] | None
+    max_total_tokens: Positive | None
+    max_input_bytes: Annotated[int, Field(strict=True, ge=1, le=100000)] | None = 100000
+    timeout_seconds: Annotated[int, Field(strict=True, ge=1, le=300)] | None = 30
 
     @model_validator(mode="before")
     @classmethod
     def frozen_rates(cls, value):
-        if isinstance(value, dict) and value.get("model") in RATES:
+        if (
+            isinstance(value, dict)
+            and not value.get("tracking_only")
+            and value.get("model") in RATES
+        ):
             value = dict(value)
             i, o = RATES[value["model"]]
             value.setdefault("input_per_million", i)
@@ -60,21 +65,53 @@ class PilotPolicy(TokenBudget, Contract):
 
     @model_validator(mode="after")
     def positive_cap(self):
-        if Decimal(self.max_cost) <= 0:
+        caps = (
+            self.max_cost,
+            self.max_requests,
+            self.max_total_tokens,
+            self.max_input_bytes,
+            self.timeout_seconds,
+        )
+        if self.tracking_only:
+            if any(cap is not None for cap in caps):
+                raise ValueError("tracking_only_requires_no_caps")
+            if self.pricing_provenance != "operator-reviewed-v1":
+                raise ValueError("tracking_tariff_required")
+            expected_output = 128000 if self.model.startswith("claude-") else None
+            if self.max_output_tokens != expected_output:
+                raise ValueError("provider_output_setting_required")
+        elif (
+            any(cap is None for cap in caps)
+            or self.max_output_tokens is None
+            or self.max_output_tokens > 32768
+            or Decimal(self.max_cost) <= 0
+        ):
             raise ValueError("positive_explicit_pricing_required")
         return self
 
 
 class GPT6Policy(PilotPolicy):
     contract: Literal["openai-gpt6-text-v1"] = "openai-gpt6-text-v1"
-    model: Literal["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
-    organization: Annotated[str, Field(pattern=r"^org_[A-Za-z0-9_-]+$")]
+    model: Literal[
+        "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"
+    ]
+    organization: Annotated[str, Field(pattern=r"^org[-_][A-Za-z0-9_-]+$")]
     project: Annotated[str, Field(pattern=r"^proj_[A-Za-z0-9_-]+$")]
     reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"]
-    context_window_tokens: Literal[922000] = 922000
+    context_window_tokens: Literal[922000] | None = 922000
+
+    @model_validator(mode="before")
+    @classmethod
+    def tracking_context(cls, value):
+        if isinstance(value, dict) and value.get("tracking_only"):
+            value = dict(value)
+            value.setdefault("context_window_tokens", None)
+        return value
 
     @model_validator(mode="after")
     def effort(self):
+        if (self.context_window_tokens is None) != self.tracking_only:
+            raise ValueError("context_mode_mismatch")
         if self.model == "gpt-6-astra" and self.reasoning_effort == "none":
             raise ValueError("astra_requires_reasoning")
         return self
@@ -84,6 +121,8 @@ class GPT6Policy(PilotPolicy):
         # at long-context cache-write rate (2 * 1.25), and 1.5x output. Requests
         # remain short, standard, with no explicit caching or tools. This is
         # deliberately more conservative than the observed short-context cost.
+        if self.tracking_only:
+            return None
         return self.token_cost(
             count * self.context_window_tokens * 5,
             count * self.max_output_tokens * 3,
@@ -93,7 +132,13 @@ class GPT6Policy(PilotPolicy):
 
 class AnthropicPolicy(PilotPolicy):
     contract: Literal["anthropic-messages-text-v1"] = "anthropic-messages-text-v1"
-    model: Literal["claude-opus-5-5", "claude-sonnet-5"]
+    model: Literal[
+        "claude-opus-5-5",
+        "claude-sonnet-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-1",
+    ]
     context_window_tokens: Literal[1000000] = 1000000
     thinking: Literal["adaptive", "disabled"] = "adaptive"
     effort: Literal["low", "medium", "high", "xhigh", "max"]
@@ -107,6 +152,8 @@ class AnthropicPolicy(PilotPolicy):
     def reservation_total(self, count):
         # Full context at maximum 1h cache-write rate. Cache is never requested,
         # but retaining this bound avoids discount/usage assumptions in admission.
+        if self.tracking_only:
+            return None
         return self.token_cost(
             count * self.context_window_tokens * 2, count * self.max_output_tokens
         )

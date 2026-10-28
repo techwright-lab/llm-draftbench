@@ -20,6 +20,16 @@ from .reporting import read_json
 from .workflow import _directory, _fsync, _run_lock
 
 MODELS = ("gpt-6-luna", "gpt-6-sol", "claude-sonnet-5")
+TRACKING_MODELS = (
+    "gpt-6-luna",
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "claude-sonnet-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-opus-5-5",
+    "claude-fable-5-1",
+)
 FORMAT = "draftbench-pilot-plan-v2"
 CALLS_PER_MODEL = 4
 MAX_CALLS = CALLS_PER_MODEL * len(MODELS)
@@ -99,10 +109,11 @@ def _total(policies):
 
 
 def _policies(config, tariff):
-    if (
-        set(config) != {"format", "account_route", "organization", "project"}
-        or config["format"] != "article-pilot-v2"
-    ):
+    tracking = config.get("format") == "article-pilot-v3-tracking"
+    models = TRACKING_MODELS if tracking else MODELS
+    if set(config) != {"format", "account_route", "organization", "project"} or config[
+        "format"
+    ] not in ("article-pilot-v2", "article-pilot-v3-tracking"):
         raise ValueError("invalid_pilot_config")
     if set(tariff) != {
         "format",
@@ -121,7 +132,18 @@ def _policies(config, tariff):
         or type(tariff["reviewed"]) is not bool
         or tariff["account_route"] != config["account_route"]
         or tariff["currency"] != "USD"
-        or tariff["rates"] != {m: list(RATES[m]) for m in MODELS}
+        or (not tracking and tariff["rates"] != {m: list(RATES[m]) for m in models})
+        or (
+            tracking
+            and (
+                not isinstance(tariff["rates"], dict)
+                or set(tariff["rates"]) != set(models)
+                or any(
+                    type(pair) is not list or len(pair) != 2
+                    for pair in tariff["rates"].values()
+                )
+            )
+        )
         or not isinstance(tariff["sources"], list)
         or not tariff["sources"]
         or any(
@@ -139,7 +161,7 @@ def _policies(config, tariff):
     ):
         raise ValueError("unreviewed_tariff")
     policies = []
-    for model in MODELS:
+    for model in models:
         policy = dict(
             model=model,
             account_route=config["account_route"],
@@ -153,6 +175,19 @@ def _policies(config, tariff):
             max_input_bytes=100000,
             timeout_seconds=300,
         )
+        if tracking:
+            policy.update(
+                tracking_only=True,
+                pricing_provenance="operator-reviewed-v1",
+                input_per_million=tariff["rates"][model][0],
+                output_per_million=tariff["rates"][model][1],
+                max_cost=None,
+                max_requests=None,
+                max_total_tokens=None,
+                max_input_bytes=None,
+                timeout_seconds=None,
+                max_output_tokens=128000 if model.startswith("claude-") else None,
+            )
         if model.startswith("gpt-"):
             policy.update(
                 contract="openai-gpt6-text-v1",
@@ -169,7 +204,7 @@ def _policies(config, tariff):
         p = parse_policy(policy)
         p.admit(CALLS_PER_MODEL)
         policies.append(p)
-    if _total(policies) > Decimal("50"):
+    if not tracking and _total(policies) > Decimal("50"):
         raise ValueError("campaign_too_small")
     return policies
 
@@ -231,8 +266,11 @@ def _scope(paths, root, campaign):
         },
         "campaign": campaign.identity,
         "runs": runs,
-        "max_calls": MAX_CALLS,
-        "conservative_reservation_usd": str(_total(policies)),
+        "max_calls": None if policies[0].tracking_only else MAX_CALLS,
+        "planned_calls": len(policies) * CALLS_PER_MODEL,
+        "conservative_reservation_usd": None
+        if policies[0].tracking_only
+        else str(_total(policies)),
         "semantic_quality": "unassessed",
     }
 
@@ -246,14 +284,16 @@ def prepare(*, suite, config, tariff, output, plan):
         for k, v in dict(suite=suite, config=config, tariff=tariff).items()
     }
     # Validate inputs before creating authority. A failed creation is never reset.
-    _policies(read_json(config), read_json(tariff))
+    policies = _policies(read_json(config), read_json(tariff))
     load_suite(suite)
     root = _directory(output, create=True)
     if Path(plan).absolute() != root / "plan.json":
         raise ValueError("plan_must_be_output_plan_json")
     with (
         _run_lock(root, create=True),
-        CampaignBudget.create(root / "campaign.sqlite3") as campaign,
+        CampaignBudget.create(
+            root / "campaign.sqlite3", tracking_only=policies[0].tracking_only
+        ) as campaign,
     ):
         scope = _scope(paths, root, campaign)
         packet = {"digest": digest(scope), "scope": scope}
@@ -267,9 +307,12 @@ def _summary(packet):
     return {
         "valid": True,
         "approval_digest": packet["digest"],
-        "max_calls": MAX_CALLS,
-        "models": list(MODELS),
-        "campaign_ceiling_usd": "50.00",
+        "max_calls": scope["max_calls"],
+        "planned_calls": scope["planned_calls"],
+        "models": [
+            run["scope"]["manifest"]["policy"]["model"] for run in scope["runs"]
+        ],
+        "campaign_ceiling_usd": scope["campaign"]["ceiling_usd"],
         "conservative_reservation_usd": scope["conservative_reservation_usd"],
         "tariff_reviewed": scope["tariff"]["reviewed"],
         "tg_revision": scope["tg_revision"],
@@ -330,6 +373,40 @@ def _validate_outputs(snapshot, scope):
     return True
 
 
+def _usage_summary(snapshot):
+    results = [row["result"] for row in snapshot["work"] if row["state"] == "completed"]
+    measured = [result for result in results if result.get("usage") is not None]
+    estimates = [
+        result["cost_upper_estimate"]
+        for result in results
+        if result.get("cost_upper_estimate") is not None
+    ]
+    known = bool(results) and len(measured) == len(results)
+    with localcontext(Context(prec=80)):
+        estimate = (
+            str(sum((Decimal(value) for value in estimates), Decimal(0)))
+            if results and len(estimates) == len(results)
+            else None
+        )
+    return {
+        "completed_calls": len(results),
+        "usage_measured_calls": len(measured),
+        "input_tokens": sum(
+            result["usage"]["input_tokens"]
+            + result["usage"].get("cache_creation_input_tokens", 0)
+            + result["usage"].get("cache_read_input_tokens", 0)
+            for result in measured
+        )
+        if known
+        else None,
+        "output_tokens": sum(result["usage"]["output_tokens"] for result in measured)
+        if known
+        else None,
+        "estimated_usd": estimate,
+        "billing_reconciled": False,
+    }
+
+
 def _lengths(snapshot, target):
     return {
         row["role"]: replay.length_score(
@@ -387,7 +464,7 @@ def _revision_input(root, model, snapshot):
     return response
 
 
-def run(plan, *, env_file, approve, resume=False):
+def run(plan, *, env_file, approve, resume=False, progress=None):
     """Only explicit live entry point. Stop globally on uncertain/invalid output.
 
     Each invocation drives at most one role before saved-output schema checks.
@@ -416,8 +493,27 @@ def run(plan, *, env_file, approve, resume=False):
         again, _ = _checked(plan)
         if again != packet:
             raise ValueError("pilot_plan_changed")
-        if not resume and any((root / m).exists() for m in MODELS):
+        if not resume and any(
+            (root / item["scope"]["manifest"]["policy"]["model"]).exists()
+            for item in scope["runs"]
+        ):
             raise ValueError("use_explicit_resume")
+
+        usage = {}
+
+        def emit(model, stage, state):
+            if progress is not None:
+                progress(
+                    {
+                        "model": model,
+                        "stage": stage,
+                        "state": state,
+                        "campaign": campaign.summary(),
+                        "usage": usage.get(model),
+                    }
+                )
+
+        stages = ("writer", "reviewer", "revision", "revision_reviewer")
         completed, waiting, lengths = 0, [], {}
         for item in scope["runs"]:
             manifest = item["scope"]["manifest"]
@@ -444,6 +540,7 @@ def run(plan, *, env_file, approve, resume=False):
                 )
             while True:
                 if not run_dir.exists():
+                    emit(policy.model, "writer", "running")
                     run_provider(
                         scope["paths"]["suite"],
                         run_dir,
@@ -453,9 +550,14 @@ def run(plan, *, env_file, approve, resume=False):
                         campaign=campaign,
                         max_steps=1,
                     )
+                    first = snapshot_provider(run_dir)
+                    usage[policy.model] = _usage_summary(first)
+                    emit(policy.model, "writer", first["work"][0]["state"])
                     continue
                 snapshot = snapshot_provider(run_dir)
+                usage[policy.model] = _usage_summary(snapshot)
                 if not _validate_outputs(snapshot, scope):
+                    emit(policy.model, "validation", "stopped_invalid_output_or_state")
                     return {
                         "complete": False,
                         "error": "pilot_stopped_output_or_state",
@@ -472,7 +574,12 @@ def run(plan, *, env_file, approve, resume=False):
                     revision_input = _revision_input(root, policy.model, snapshot)
                     if revision_input is None:
                         waiting.append(policy.model)
+                        emit(policy.model, "revision", "waiting_for_tg_replay")
                         break
+                pending = next(
+                    i for i, state in enumerate(states) if state != "completed"
+                )
+                emit(policy.model, stages[pending], "running")
                 resume_provider(
                     run_dir,
                     approve=approved,
@@ -482,15 +589,24 @@ def run(plan, *, env_file, approve, resume=False):
                     revision_input=revision_input,
                 )
                 after = snapshot_provider(run_dir)
+                usage[policy.model] = _usage_summary(after)
+                emit(policy.model, stages[pending], after["work"][pending]["state"])
                 if states == [row["state"] for row in after["work"]]:
+                    emit(policy.model, stages[pending], "admission_stopped")
                     return {"complete": False, "error": "pilot_admission_stopped"}
         result = {
-            "complete": completed == len(MODELS),
+            "complete": completed == len(scope["runs"]),
             "campaign": campaign.summary(),
             "length": lengths,
+            "usage": usage,
             "semantic_quality": "unassessed",
             "billing_reconciled": False,
         }
+        emit(
+            "pilot",
+            "pilot",
+            "completed" if result["complete"] else "waiting_for_tg_replay",
+        )
         if waiting:
             result["waiting"] = "tg_review_replay_required"
             result["review_replay_requests"] = [

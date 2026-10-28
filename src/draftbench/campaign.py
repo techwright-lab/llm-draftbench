@@ -64,6 +64,24 @@ _GUARDS = tuple(
 )
 
 
+_TRACKING_TABLES = (
+    _TABLES[0].replace(
+        "ceiling INTEGER NOT NULL CHECK(ceiling=5000000000000000)",
+        "ceiling INTEGER CHECK(ceiling IS NULL)",
+    ),
+    _TABLES[1].replace(
+        "units INTEGER NOT NULL CHECK(typeof(units)='integer' AND units>0\n            AND units<=5000000000000000)",
+        "units INTEGER CHECK(units IS NULL)",
+    ),
+)
+_TRACKING_GUARDS = _GUARDS[:-1] + (
+    """CREATE TRIGGER reservations_guard BEFORE INSERT ON reservations BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM reservations WHERE attempt_id=NEW.attempt_id)
+            THEN RAISE(ABORT,'campaign_duplicate') END;
+    END""",
+)
+
+
 def _units(amount):
     # Do not accept floats or unknown quotes. Integer arithmetic is independent
     # of the caller's Decimal context; round UP, never under-reserve fractions.
@@ -95,7 +113,9 @@ class CampaignBudget(Ledger):
     """
 
     @classmethod
-    def create(cls, path):
+    def create(cls, path, *, tracking_only=False):
+        if type(tracking_only) is not bool:
+            raise ValueError("invalid_tracking_mode")
         path = _safe_path(path)
         fd = None
         budget = None
@@ -109,14 +129,16 @@ class CampaignBudget(Ledger):
             info = os.fstat(fd)
             budget = cls(_connect(path, info), path, info)
             with budget._transaction():
-                for statement in _TABLES:
+                for statement in _TRACKING_TABLES if tracking_only else _TABLES:
                     budget._connection.execute(statement)
-                budget._connection.execute("PRAGMA user_version=1")
+                budget._connection.execute(
+                    f"PRAGMA user_version={2 if tracking_only else 1}"
+                )
                 budget._connection.execute(
                     "INSERT INTO campaign VALUES (1,?,?,?)",
-                    (uuid.uuid4().hex, "USD", _CEILING),
+                    (uuid.uuid4().hex, "USD", None if tracking_only else _CEILING),
                 )
-                for statement in _GUARDS:
+                for statement in _TRACKING_GUARDS if tracking_only else _GUARDS:
                     budget._connection.execute(statement)
             parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
             try:
@@ -142,7 +164,11 @@ class CampaignBudget(Ledger):
 
     def _verify(self):
         db = self._connection
-        expected = {s.split()[2]: s.strip() for s in _TABLES + _GUARDS}
+        schema_version = db.execute("PRAGMA user_version").fetchone()[0]
+        tracking = schema_version == 2
+        tables = _TRACKING_TABLES if tracking else _TABLES
+        guards = _TRACKING_GUARDS if tracking else _GUARDS
+        expected = {s.split()[2]: s.strip() for s in tables + guards}
         actual = {
             r["name"]: r["sql"]
             for r in db.execute(
@@ -151,17 +177,17 @@ class CampaignBudget(Ledger):
         }
         rows = db.execute("SELECT * FROM campaign").fetchall()
         if (
-            db.execute("PRAGMA user_version").fetchone()[0] != 1
+            schema_version not in (1, 2)
             or actual != expected
             or len(rows) != 1
             or rows[0]["singleton"] != 1
             or rows[0]["currency"] != "USD"
-            or rows[0]["ceiling"] != _CEILING
+            or rows[0]["ceiling"] != (None if tracking else _CEILING)
             or [r[0] for r in db.execute("PRAGMA quick_check")] != ["ok"]
         ):
             raise ValueError("campaign_corrupt")
         _identifier(rows[0]["campaign_id"], attempt=True)
-        if self._total() > _CEILING:
+        if not tracking and self._total() > _CEILING:
             raise ValueError("campaign_corrupt")
 
     def _identity(self):
@@ -169,7 +195,7 @@ class CampaignBudget(Ledger):
         return {
             "campaign_id": row["campaign_id"],
             "currency": row["currency"],
-            "ceiling_usd": "50.00",
+            "ceiling_usd": "50.00" if row["ceiling"] is not None else None,
         }
 
     @property
@@ -186,7 +212,9 @@ class CampaignBudget(Ledger):
         with self._transaction(write=False):
             return {
                 **self._identity(),
-                "reserved_usd": _money(self._total()),
+                "reserved_usd": _money(self._total())
+                if self._identity()["ceiling_usd"] is not None
+                else None,
                 "reservation_count": self._connection.execute(
                     "SELECT count(*) FROM reservations"
                 ).fetchone()[0],
@@ -209,7 +237,13 @@ class CampaignBudget(Ledger):
             _digest(value)
         if currency != "USD":
             raise ValueError("campaign_currency")
-        units, exact_amount = _units(upper_bound)
+        tracking = self.identity["ceiling_usd"] is None
+        if tracking:
+            if upper_bound is not None:
+                raise ValueError("tracking_campaign_requires_no_reservation")
+            units, exact_amount = None, None
+        else:
+            units, exact_amount = _units(upper_bound)
         binding = hashlib.sha256(
             canonical_bytes(
                 {
@@ -219,7 +253,9 @@ class CampaignBudget(Ledger):
                     "config_digest": config_digest,
                     "provider": provider,
                     "currency": currency,
-                    "amount_ratio": list(exact_amount),
+                    "amount_ratio": list(exact_amount)
+                    if exact_amount is not None
+                    else None,
                 }
             )
         ).hexdigest()
@@ -231,7 +267,7 @@ class CampaignBudget(Ledger):
                 if existing["binding"] != binding:
                     raise ValueError("campaign_binding_mismatch")
                 return attempt_id
-            if self._total() + units > _CEILING:
+            if not tracking and self._total() + units > _CEILING:
                 raise ValueError("campaign_exhausted")
             self._connection.execute(
                 "INSERT INTO reservations VALUES (?,?,?,?,?,?,?)",

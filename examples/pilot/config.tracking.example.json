@@ -1,0 +1,6 @@
+{
+  "format": "article-pilot-v3-tracking",
+  "account_route": "REPLACE_WITH_LAB_ACCOUNT_ROUTE",
+  "organization": "org-REPLACE_WITH_LAB_ORGANIZATION",
+  "project": "proj_REPLACE_WITH_LAB_PROJECT"
+}

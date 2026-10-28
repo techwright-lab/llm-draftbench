@@ -199,6 +199,11 @@ def _parser() -> argparse.ArgumentParser:
         sub.add_argument("--plan", required=True)
         sub.add_argument("--env-file", required=True)
         sub.add_argument(
+            "--quiet-progress",
+            action="store_true",
+            help="Suppress live stderr progress",
+        )
+        sub.add_argument(
             "--approve",
             required=True,
             help="Exact reviewed preflight digest; not a credential",
@@ -235,11 +240,14 @@ def main(argv: list[str] | None = None) -> int:
             elif args.pilot_command == "preflight":
                 result = pilot.preflight(args.plan)
             else:
+                from .progress import terminal_progress
+
                 result = pilot.run(
                     args.plan,
                     env_file=args.env_file,
                     approve=args.approve,
                     resume=args.pilot_command == "resume",
+                    progress=None if args.quiet_progress else terminal_progress(),
                 )
             print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
             return 0 if result.get("complete", True) else 3
