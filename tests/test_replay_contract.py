@@ -38,6 +38,24 @@ def exported_body():
     return case()["history"]["drafts"][0]["units"][0]["content"]
 
 
+def test_pin_is_the_verified_replay_enabled_deployment():
+    assert replay.TG_REVISION == "3540a3422bbe4182151656a772950c5bc1362ab4"
+
+
+@pytest.mark.parametrize("revision", ["3df1b314", "b416538f", "0" * 40])
+def test_review_replay_refuses_another_tg_revision(revision):
+    draft, review = draft_json(), review_json()
+    response = review_replay(draft, review) | {"tg_revision": revision}
+    with pytest.raises(ValueError, match="review_replay_revision_mismatch"):
+        replay.revision_messages(
+            response,
+            case_id="synthetic-replay-1",
+            draft_output=draft,
+            review_output=review,
+            system=messages("revision")[0]["content"],
+        )
+
+
 def test_pinned_schemas_are_strict_local_tg_shapes():
     from jsonschema import Draft202012Validator
 
@@ -273,7 +291,10 @@ def test_target_words_and_length_score():
     assert replay.length_score(body, None)["ratio_to_target"] is None
 
 
-def test_review_replay_request_and_response_binding():
+@pytest.mark.parametrize(
+    "revision", ["3540a34", "3540a342", "3540a3422bbe4182151656a772950c5bc1362ab4"]
+)
+def test_review_replay_request_and_response_binding(revision):
     draft, review = draft_json(), review_json()
     request = replay.replay_request(
         case_id="synthetic-replay-1",
@@ -286,7 +307,7 @@ def test_review_replay_request_and_response_binding():
     assert request["draft"] == json.loads(draft)
     assert request["ledger"] == json.loads(review)
     assert request["tg_revision"] == replay.TG_REVISION
-    response = review_replay(draft, review)
+    response = review_replay(draft, review) | {"tg_revision": revision}
     assert response["draft_sha256"] == request["draft_sha256"]
     system = messages("revision")[0]["content"]
     bound = dict(case_id="synthetic-replay-1", system=system)

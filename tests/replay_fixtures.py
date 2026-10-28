@@ -5,6 +5,7 @@ from pathlib import Path
 
 from draftbench.adapters.replay_contract import (
     REPLAY_RESPONSE_FORMAT,
+    TG_REVISION,
     replay_prompt,
     sha256_text,
 )
@@ -105,7 +106,7 @@ def review_replay(draft_output, review_output, user="Synthetic TG revision promp
     return {
         "format": REPLAY_RESPONSE_FORMAT,
         "case_id": case()["case_id"],
-        "tg_revision": "3df1b314",
+        "tg_revision": TG_REVISION[:8],
         "draft_sha256": sha256_text(draft_output),
         "review_sha256": sha256_text(review_output),
         "review": {"verdict": "synthetic"},
