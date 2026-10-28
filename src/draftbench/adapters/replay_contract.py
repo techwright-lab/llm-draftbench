@@ -9,7 +9,7 @@ import re
 
 from ..identity import canonical_bytes, strict_json_loads
 
-TG_REVISION = "3df1b314d4d208051045624334b3096479ad4586"
+TG_REVISION = "3540a3422bbe4182151656a772950c5bc1362ab4"
 FORMAT = "draftbench-native-replay-v1"
 REPLAY_REQUEST_FORMAT = "draftbench-review-replay-request-v1"
 REPLAY_RESPONSE_FORMAT = "trust-growth-review-replay-v1"
@@ -304,6 +304,8 @@ def revision_messages(response, *, case_id, draft_output, review_output, system)
         or set(response["revision"]) != {"messages"}
     ):
         raise ValueError("invalid_review_replay")
+    if not TG_REVISION.startswith(response["tg_revision"]):
+        raise ValueError("review_replay_revision_mismatch")
     if response["draft_sha256"] != sha256_text(draft_output) or response[
         "review_sha256"
     ] != sha256_text(review_output):

@@ -276,7 +276,9 @@ def test_legacy_config_refused(packet, config):
         pilot.prepare(**packet)
 
 
-@pytest.mark.parametrize("version", ["0badc0de", "19370494", "1937049452c757dc"])
+@pytest.mark.parametrize(
+    "version", ["0badc0de", "19370494", "1937049452c757dc", "3df1b314"]
+)
 def test_export_from_other_tg_revision_refused(packet, tmp_path, version):
     import shutil
 
