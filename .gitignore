@@ -6,6 +6,8 @@ suites/private/
 .env.*
 !.env.example
 
+.worktrees/
+
 # python
 __pycache__/
 *.py[cod]
