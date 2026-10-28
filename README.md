@@ -151,8 +151,9 @@ The exact GPT-6 Astra/Sol/Luna and Claude Opus 5.5/Sonnet 5 IDs have pinned
 real-SDK mocked HTTP contracts (OpenAI and Anthropic; Google and xAI are
 planned), shared durable **US$50 total** campaign admission,
 and SDK-free saved-output custody/reporting. Both provider families have fixture
-CLI routes; there is no ambient credential discovery. The separate three-model
-pilot launcher requires explicit scope approval and credentials. All five
+CLI routes; there is no ambient credential discovery. The pilot launcher supports the original bounded three-model configuration and
+an eight-model tracking-only configuration; both require explicit scope approval
+and credentials. All five
 pilot policies require explicit enrollment in the same campaign authority.
 
 See [the five-model contract](schemas/FIVE_MODEL_CONTRACT.md) for exact IDs,
@@ -167,7 +168,27 @@ Conservative caps can leave runs incomplete rather than overrun the budget.
 - Not a publication gate. Lab results do not authorize anything in production.
 - Not a hosted service. Local-first, file-first, static reports.
 
-## First pilot: prepare offline, run only after human merge
+## Eight-model tracking-only pilot and live progress
+
+The `article-pilot-v3-tracking` configuration selects GPT-6 Luna, GPT-6.1 Sol,
+GPT-6.1 Terra, Claude Sonnet 5, Sonnet 5.5, Haiku 5.5, Opus 5.5 and Fable 5.1.
+Each performs four stages (32 planned calls), with no local dollar, request-count,
+cumulative-token, prompt-size or timeout caps. OpenAI output limits are omitted;
+Anthropic's mandatory `max_tokens` is its advertised 128,000-token maximum.
+Provider limits still apply. The legacy v2 configuration remains bounded.
+
+`pilot run` and `pilot resume` now print live, flushed progress to stderr:
+model, stage, state, elapsed time, attempt count, completed-call tokens and
+estimated cost. Final JSON stays on stdout; `--quiet-progress` suppresses the
+progress display. No prompts, outputs or credentials are printed. Missing usage
+is unknown, and estimated cost is never claimed as billed cost.
+
+See `examples/pilot/config.tracking.example.json` and the
+[tracking-only operator guide](schemas/PILOT_OPERATOR.md#tracking-only-eight-model-pilot).
+New-model tariffs require independent review; no prices are guessed. These paths
+are tested with mocked providers, not a completed live eight-model study.
+
+## Original bounded pilot: prepare offline, run only after human merge
 
 The [operator guide](schemas/PILOT_OPERATOR.md) gives the complete install,
 configuration, secure credential-file, prepare/preflight, approval, run/resume and

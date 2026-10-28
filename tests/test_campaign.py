@@ -38,6 +38,43 @@ def crash_worker(path):
         os._exit(17)
 
 
+@pytest.mark.parametrize("value", ["false", "true", 1, None])
+def test_tracking_campaign_requires_explicit_boolean(tmp_path, value):
+    path = tmp_path / "campaign.db"
+    with pytest.raises(ValueError, match="invalid_tracking_mode"):
+        CampaignBudget.create(path, tracking_only=value)
+    assert not path.exists()
+
+
+def test_tracking_campaign_records_attempts_without_budget_and_preserves_identity(
+    tmp_path,
+):
+    path = tmp_path / "tracking.db"
+    with CampaignBudget.create(path, tracking_only=True) as campaign:
+        identity = campaign.identity
+        assert identity["ceiling_usd"] is None
+        for i in range(100):
+            args = reservation(i)
+            args["upper_bound"] = None
+            campaign.reserve(**args)
+        assert campaign.summary()["reservation_count"] == 100
+        assert campaign.summary()["reserved_usd"] is None
+        with pytest.raises(
+            ValueError, match="tracking_campaign_requires_no_reservation"
+        ):
+            campaign.reserve(**reservation(101))
+    with CampaignBudget.open(path) as campaign:
+        assert campaign.identity == identity
+        args = reservation(99)
+        args["upper_bound"] = None
+        campaign.reserve(**args)
+        assert campaign.summary()["reservation_count"] == 100
+        with pytest.raises(ValueError, match="campaign_binding_mismatch"):
+            campaign.reserve(**{**args, "provider": "different"})
+    with pytest.raises(ValueError):
+        CampaignBudget.create(path)
+
+
 def test_two_mock_providers_share_one_fifty_dollar_ceiling(tmp_path):
     path = tmp_path / "campaign.db"
     with CampaignBudget.create(path) as budget:

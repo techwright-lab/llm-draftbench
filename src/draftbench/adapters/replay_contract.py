@@ -158,7 +158,9 @@ def replay_prompt(messages, schema):
 
 
 def parse_prompt(prompt, max_bytes):
-    if type(prompt) is not str or len(prompt.encode()) > max_bytes:
+    if type(prompt) is not str or (
+        max_bytes is not None and len(prompt.encode()) > max_bytes
+    ):
         raise ValueError("input_limit")
     value = strict_json_loads(prompt)
     if (

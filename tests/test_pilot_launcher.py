@@ -37,15 +37,22 @@ def secret(tmp_path, text=ENV):
     return path
 
 
-def test_explicit_loader(tmp_path, monkeypatch):
+@pytest.mark.parametrize("organization", ["org_lab", "org-lab"])
+def test_explicit_loader(tmp_path, monkeypatch, organization):
     monkeypatch.setenv("OPENAI_API_KEY", "ambient-must-not-be-read")
-    path = secret(tmp_path)
-    assert load_credentials(path)["DRAFTBENCH_OPENAI_API_KEY"] == CANARY
+    path = secret(tmp_path, ENV.replace("org_lab", organization))
+    credentials = load_credentials(path)
+    assert credentials["DRAFTBENCH_OPENAI_API_KEY"] == CANARY
+    assert credentials["DRAFTBENCH_OPENAI_ORGANIZATION"] == organization
 
 
 @pytest.mark.parametrize(
     "bad",
     [
+        ENV.replace("org_lab", "org-"),
+        ENV.replace("org_lab", "org_"),
+        ENV.replace("org_lab", "organization-lab"),
+        ENV.replace("org_lab", "org/lab"),
         ENV.replace(CANARY, "REPLACE_WITH_LAB_KEY"),
         ENV.replace(CANARY, ""),
         ENV + "OPENAI_API_KEY=not-allowed\n",
@@ -135,7 +142,12 @@ def packet(tmp_path):
     return args
 
 
-def test_prepare_preflight_no_credentials_or_sdk(packet, monkeypatch):
+@pytest.mark.parametrize("organization", ["org_lab", "org-lab"])
+def test_prepare_preflight_no_credentials_or_sdk(packet, monkeypatch, organization):
+    config = json.loads(packet["config"].read_text())
+    config["organization"] = organization
+    packet["config"].write_text(json.dumps(config))
+
     def denied(*a, **kw):
         raise AssertionError("credentials must not be read")
 
@@ -342,17 +354,17 @@ def sdk(monkeypatch):
             assert request.url == "https://api.openai.com/v1/responses"
             assert wire["text"]["format"]["strict"] is True
             assert wire["reasoning"] == {"effort": "low"}
-            assert wire["max_output_tokens"] == 16000
+            assert wire.get("max_output_tokens") in (None, 16000)
             user = wire["input"][0]["content"]
         else:
             schema = wire["output_config"]["format"]["schema"]
             reviewer = "results" in schema["properties"]
             assert wire["output_config"]["effort"] == "low"
-            assert wire["max_tokens"] == 16000
+            assert wire["max_tokens"] in (16000, 128000)
             assert wire["system"][0]["type"] == "text"
             user = wire["messages"][0]["content"][0]["text"]
         calls.append((wire, user))
-        assert len(calls) <= 12
+        assert len(calls) <= 32
         assert (
             request.headers.get("authorization") == "Bearer " + CANARY
             or request.headers.get("x-api-key") == CANARY
@@ -387,7 +399,13 @@ def sdk(monkeypatch):
                         ],
                     }
                 ],
-                "usage": None,
+                "usage": {
+                    "input_tokens": 100000,
+                    "output_tokens": 20000,
+                    "total_tokens": 120000,
+                }
+                if faults.get("usage")
+                else None,
             }
         else:
             body = {
@@ -398,13 +416,17 @@ def sdk(monkeypatch):
                 "content": [{"type": "text", "text": content}],
                 "stop_reason": "end_turn",
                 "stop_sequence": None,
-                "usage": None,
+                "usage": {"input_tokens": 100000, "output_tokens": 20000}
+                if faults.get("usage")
+                else None,
             }
         return httpx.Response(200, json=body)
 
     class MockClient(original):
         def __init__(self, *args, **kwargs):
             assert kwargs["transport"] is None
+            if faults.get("tracking"):
+                assert kwargs["timeout"] is None
             assert kwargs["trust_env"] is False
             assert kwargs["follow_redirects"] is False
             kwargs["transport"] = httpx.MockTransport(handler)
@@ -412,6 +434,83 @@ def sdk(monkeypatch):
 
     monkeypatch.setattr(httpx, "Client", MockClient)
     return calls, faults
+
+
+def test_tracking_only_eight_model_pilot(packet, sdk, tmp_path, capsys):
+    sdk[1]["usage"] = True
+    sdk[1]["tracking"] = True
+    models = (
+        "gpt-6-luna",
+        "gpt-6.1-sol",
+        "gpt-6.1-terra",
+        "claude-sonnet-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-opus-5-5",
+        "claude-fable-5-1",
+    )
+    config = json.loads(packet["config"].read_text())
+    config["format"] = "article-pilot-v3-tracking"
+    packet["config"].write_text(json.dumps(config))
+    tariff = json.loads(packet["tariff"].read_text())
+    tariff["rates"] = {m: ["100", "500"] for m in models}  # Synthetic, not live prices.
+    packet["tariff"].write_text(json.dumps(tariff))
+    prepared = pilot.prepare(**packet)
+    assert prepared["models"] == list(models)
+    assert prepared["campaign_ceiling_usd"] is None
+    assert prepared["max_calls"] is None
+    assert prepared["planned_calls"] == 32
+    assert prepared["conservative_reservation_usd"] is None
+    scope = json.loads(packet["plan"].read_text())["scope"]
+    for run in scope["runs"]:
+        policy = run["scope"]["manifest"]["policy"]
+        for key in (
+            "max_cost",
+            "max_requests",
+            "max_total_tokens",
+            "max_input_bytes",
+            "timeout_seconds",
+        ):
+            assert policy[key] is None
+        assert policy["max_output_tokens"] == (
+            128000 if policy["model"].startswith("claude-") else None
+        )
+    args = pilot_args(packet, tmp_path, prepared["approval_digest"])
+    assert main(["pilot", "run", *args]) == 3
+    assert len(sdk[0]) == 16
+    capsys.readouterr()
+    answer_replays(packet["output"])
+    assert main(["pilot", "resume", *args]) == 0
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["campaign"]["reservation_count"] == 32
+    assert result["campaign"]["reserved_usd"] is None
+    assert result["usage"]["gpt-6.1-sol"]["estimated_usd"] == "80"
+    assert result["usage"]["gpt-6.1-sol"]["output_tokens"] == 80000
+    assert "estimated_usd=80" in captured.err
+    assert len(sdk[0]) == 32
+    assert {wire["model"] for wire, _ in sdk[0]} == set(models)
+    assert all(
+        "max_output_tokens" not in wire
+        for wire, _ in sdk[0]
+        if wire["model"].startswith("gpt-")
+    )
+    assert main(["pilot", "resume", *args]) == 0
+    assert len(sdk[0]) == 32
+    for model in models:
+        snapshot = snapshot_provider(packet["output"] / model)
+        from draftbench.adapters.provider_contract import parse_policy
+
+        policy = parse_policy(snapshot["manifest"]["policy"])
+        policy.admit(10**30)
+        assert policy.reservation_total(10**30) is None
+        assert policy.reserved_tokens is None
+        provider = "anthropic" if model.startswith("claude-") else "openai"
+        capsys.readouterr()
+        assert main([provider, "report", str(packet["output"] / model)]) == 0
+        report = json.loads(capsys.readouterr().out)
+        assert report["reserved_cost"] is None
+        assert report["reserved_token_units"] is None
 
 
 def answer_replays(output, user="Synthetic TG revision prompt."):
@@ -446,13 +545,30 @@ def pilot_args(packet, tmp_path, approval):
     ]
 
 
+def test_quiet_progress_preserves_json_output(packet, sdk, tmp_path, capsys):
+    prepared = pilot.prepare(**packet)
+    args = pilot_args(packet, tmp_path, prepared["approval_digest"])
+    assert main(["pilot", "run", *args, "--quiet-progress"]) == 3
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out)["waiting"] == "tg_review_replay_required"
+    assert len(sdk[0]) == 6
+
+
 def test_real_sdk_twelve_calls_one_campaign_resume_and_replay(
     packet, sdk, tmp_path, capsys, monkeypatch
 ):
     result = pilot.prepare(**packet)
     args = pilot_args(packet, tmp_path, result["approval_digest"])
     assert main(["pilot", "run", *args]) == 3
-    waiting = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    waiting = json.loads(captured.out)
+    assert "gpt-6-luna | writer | running" in captured.err
+    assert "gpt-6-luna | reviewer | completed" in captured.err
+    assert "revision | waiting_for_tg_replay" in captured.err
+    assert "reserved_usd=" in captured.err
+    assert CANARY not in captured.err
+    assert SIDECAR_CANARY not in captured.err
     assert waiting["waiting"] == "tg_review_replay_required"
     assert len(waiting["review_replay_requests"]) == 3
     assert len(sdk[0]) == 6
@@ -461,9 +577,15 @@ def test_real_sdk_twelve_calls_one_campaign_resume_and_replay(
     capsys.readouterr()
     answer_replays(packet["output"], user="Synthetic TG revision prompt 7731.")
     assert main(["pilot", "resume", *args]) == 0
-    final = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    final = json.loads(captured.out)
+    assert "revision_reviewer | running" in captured.err
+    assert "revision_reviewer | completed" in captured.err
+    assert "pilot | completed" in captured.err
     assert "waiting" not in final
     assert final["campaign"]["reservation_count"] == 12
+    assert final["usage"]["gpt-6-luna"]["estimated_usd"] is None
+    assert final["usage"]["gpt-6-luna"]["input_tokens"] is None
     assert len(sdk[0]) == 12
     assert final["length"]["gpt-6-sol"]["revision"] == {
         "body_words": 3,

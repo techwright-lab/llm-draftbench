@@ -35,7 +35,11 @@ def native_request(policy, prompt):
                 "strict": True,
             }
         },
-        "max_output_tokens": policy.max_output_tokens,
+        **(
+            {"max_output_tokens": policy.max_output_tokens}
+            if policy.max_output_tokens is not None
+            else {}
+        ),
         "reasoning": {"effort": policy.reasoning_effort},
         "stream": False,
         "store": False,
@@ -51,7 +55,9 @@ def _usage(native, policy):
         i, o, t = (usage[k] for k in ("input_tokens", "output_tokens", "total_tokens"))
         if any(type(x) is not int or x < 0 for x in (i, o, t)) or t != i + o:
             raise ValueError()
-        if i > policy.context_window_tokens or o > policy.max_output_tokens:
+        if not getattr(policy, "tracking_only", False) and (
+            i > policy.context_window_tokens or o > policy.max_output_tokens
+        ):
             raise ValueError()
         # Validate WIRE types before equality: False and 0.0 compare equal to 0.
         # Cached input gets no discount; reasoning is included in output tokens.
@@ -72,6 +78,8 @@ def _usage(native, policy):
                 if field != allowed and value != 0:
                     raise ValueError()
         if i > 272000:
+            if getattr(policy, "tracking_only", False):
+                return usage, None
             raise ValueError("short_context_required")
         estimate = policy.token_cost(i, o)
         return usage, str(estimate)

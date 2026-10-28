@@ -6,6 +6,8 @@ from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal, localcontext
 class TokenBudget:
     @property
     def reserved_tokens(self):
+        if getattr(self, "tracking_only", False):
+            return None
         return self.context_window_tokens + self.max_output_tokens
 
     @property
@@ -34,6 +36,8 @@ class TokenBudget:
             ) / (1000000 * denominator)
 
     def admit(self, count):
+        if getattr(self, "tracking_only", False):
+            return
         if (
             count > self.max_requests
             or count * self.reserved_tokens > self.max_total_tokens
