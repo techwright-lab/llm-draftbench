@@ -139,8 +139,12 @@ def _report(ledger, store, manifest):
         "complete": summary["states"]["completed"] == summary["work_count"],
         **summary,
         "currency": policy.currency,
-        "reserved_cost": str(policy.reservation_total(summary["attempt_count"])),
-        "reserved_token_units": policy.reserved_tokens * summary["attempt_count"],
+        "reserved_cost": None
+        if policy.tracking_only
+        else str(policy.reservation_total(summary["attempt_count"])),
+        "reserved_token_units": None
+        if policy.tracking_only
+        else policy.reserved_tokens * summary["attempt_count"],
         "billing_reconciled": False,
     }
 

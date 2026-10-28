@@ -6,7 +6,61 @@ fabricated inputs and real SDKs over in-process mocked HTTP, with sockets denied
 No account access, model availability, live tariff or content-quality result has
 been verified by those tests.
 
-## Scope and approval
+## Tracking-only eight-model pilot
+
+For the current eight-model pilot, use `examples/pilot/config.tracking.example.json`
+as the configuration shape (`article-pilot-v3-tracking`). The legacy
+`article-pilot-v2` configuration below still selects the original bounded study;
+it does not silently become tracking-only.
+
+The tracking roster is fixed and approval-bound:
+
+- `gpt-6-luna`
+- `gpt-6.1-sol` (replaces the legacy `gpt-6-sol`)
+- `gpt-6.1-terra`
+- `claude-sonnet-5`
+- `claude-sonnet-5-5`
+- `claude-haiku-5-5`
+- `claude-opus-5-5`
+- `claude-fable-5-1`
+
+Each model still performs writer → reviewer → revision → revision reviewer:
+**32 planned calls**, not a spend or call-count admission ceiling. There are no
+local dollar, request-count, cumulative-token, prompt-byte or request-timeout
+caps. No automatic retry or fallback is introduced. Output validation, exact
+approval, secure credentials and immutable attempt custody remain enforced.
+OpenAI requests omit `max_output_tokens`. Anthropic Messages requires
+`max_tokens`; the five selected models advertise a provider maximum of 128,000,
+which is sent explicitly. Adaptive thinking and low effort remain selected.
+Provider context, output and rate limits still apply. The native request settings
+therefore differ from the original TrustGrowth 16,000-token writer configuration.
+
+The tariff attestation uses the same shape as below, but `rates` must contain
+exactly all eight model IDs, each mapped to independently reviewed `[input,
+output]` USD-per-million strings. No new-model prices are guessed or inherited
+from the replaced model. The plan binds the attestation for cost estimates,
+not budget admission. Do not use synthetic test rates for a real run.
+
+Preparation creates a new version-2 **tracking** campaign database: durable
+attempt identities, no monetary reservations, `ceiling_usd: null` and
+`reserved_usd: null`. Null means not reserved, never free. Existing version-1
+$50 campaign databases remain capped and are never upgraded, reset or replaced.
+Code changes invalidate frozen plan fingerprints; do not re-prepare a started
+campaign to bypass that check. Finish it with its original code or preserve it
+and explicitly authorize a distinct experiment.
+
+Live stderr progress includes model/stage, elapsed invocation time, durable
+attempt count, per-model completed-call input/output tokens and estimated USD.
+Missing usage or pricing remains unknown. OpenAI long-context usage is preserved
+without guessing a long-context cost multiplier. Final JSON includes a `usage`
+map per model. Estimates are **not invoices**; failed/uncertain calls may also
+incur charges not represented by completed-call totals. Reconcile provider billing.
+
+Prepare, preflight, exact-digest approval, run and resume use the commands below.
+No model generation occurs during preparation. Listing a model via its provider
+API establishes visibility, not successful generation compatibility.
+
+## Legacy bounded scope and approval
 
 The launcher measures how **TrustGrowth's own prompts** perform on other models.
 It supports exactly one complete case exported by TrustGrowth's
@@ -218,6 +272,15 @@ uv run --offline draftbench pilot run \
   --plan "$PLAN" --env-file /path/to/private-credentials/.env \
   --approve EXACT_REVIEWED_PREFLIGHT_DIGEST
 ```
+
+Live progress is printed and flushed to stderr before and after each provider
+step: elapsed time for this invocation, model, stage, state, campaign attempts,
+reserved USD, completed-call tokens and estimated USD (not actual billed cost). Waiting for TrustGrowth replay and
+output-validation stops are shown explicitly. No prompt, output or credential
+text is printed. Final JSON remains on stdout, so redirecting stdout to a report
+file leaves progress visible in the terminal. Pass `--quiet-progress` to `run`
+or `resume` to suppress progress. Progress is informational, not a success or
+quality verdict; a `completed` provider step can still fail output validation.
 
 The launcher compares each child-run scope against the approved frozen digest;
 it does not install an unconditional approval callback. Credentials are not

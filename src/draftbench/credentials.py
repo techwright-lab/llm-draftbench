@@ -84,7 +84,7 @@ def load_credentials(path):
         if values.keys() != _KEYS:
             raise ValueError
         if not re.fullmatch(
-            r"org_[A-Za-z0-9_-]+", values["DRAFTBENCH_OPENAI_ORGANIZATION"]
+            r"org[-_][A-Za-z0-9_-]+", values["DRAFTBENCH_OPENAI_ORGANIZATION"]
         ):
             raise ValueError
         if not re.fullmatch(
