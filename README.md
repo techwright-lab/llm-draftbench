@@ -185,7 +185,9 @@ is unknown, and estimated cost is never claimed as billed cost.
 
 See `examples/pilot/config.tracking.example.json` and the
 [tracking-only operator guide](schemas/PILOT_OPERATOR.md#tracking-only-eight-model-pilot).
-New-model tariffs require independent review; no prices are guessed. These paths
+Verify the pinned TG replay environment and source draft before any paid call;
+see the operator guide's replay-readiness checklist. New-model tariffs require
+independent review; no prices are guessed. These paths
 are tested with mocked providers, not a completed live eight-model study.
 
 ## Original bounded pilot: prepare offline, run only after human merge
@@ -212,7 +214,7 @@ fixtures, tests, reports, preparation and preflight never load it.
 The pilot replays TrustGrowth's own prompts on Luna, Sol and Sonnet 5: the
 exported system and user messages go out as native roles (OpenAI Responses API,
 Anthropic `system` + messages) with TrustGrowth's strict output schemas and
-request settings pinned at TrustGrowth revision `3df1b314`, low effort and 16,000 output tokens per request. Each model runs writer →
+request settings pinned at the replay-enabled TrustGrowth revision `3540a342`, low effort and 16,000 output tokens per request. Each model runs writer →
 reviewer → revision → reviewer of the revision: at most twelve requests,
 reserving US$37.01 of one shared US$50 campaign. The reviewer gets the exported
 TrustGrowth reviewer payload with the lab draft substituted in; the revision

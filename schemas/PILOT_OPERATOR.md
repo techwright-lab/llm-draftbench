@@ -99,7 +99,7 @@ one system and one user message. They are sent **as native roles**:
 The export has no schema or request settings. The lab pins TrustGrowth's
 `SeoContentSchema` (writer, revision) and `ReviewLedgerSchema` (reviewer) and the
 settings above from TrustGrowth revision
-`3df1b314d4d208051045624334b3096479ad4586` in
+`3540a3422bbe4182151656a772950c5bc1362ab4` in
 `draftbench.adapters.replay_contract`. `prepare` refuses a case whose
 `prompt_version` is not a prefix of that revision (`tg_revision_mismatch`); a
 newer export needs a reviewed lab update first. Saved outputs are still validated
@@ -196,6 +196,36 @@ Tariff attestation:
 This is a **local operator attestation**, not provider-authenticated proof. A
 JSON boolean alone does not verify a price. The launcher binds its exact content
 and requires a separately entered approval digest.
+
+### Verify the replay environment before paid dispatch
+
+A valid export alone does not prove that revision replay can run. The old
+`3df1b314` pin predates TG's no-write replay task; do not reuse that packet or
+spoof its revision when running newer TG code. The current pin is the verified
+replay-enabled `3540a342` deployment; both pinned schemas were compared against
+its actual Schematist render and are unchanged.
+
+Before preparing the final plan:
+
+1. Confirm the exporter and `draftbench:review_replay` run at the same pinned
+   image/commit. Check the actual deployment, not just Git's default branch.
+2. Select an admin-owned case present in that environment's database. Replay
+   loads its real source draft and related records; an archived packet cannot
+   substitute for a missing source row. Do not silently opt customer sites in.
+3. Export through TG's read-only exporter, download via its allowlisted private
+   object store, and verify manifest and file checksums. A one-case subset must
+   preserve the case bytes/identity and record its parent export lineage.
+4. In a separate private probe directory, create explicitly synthetic draft and
+   review outputs, send their replay requests to TG, and validate the returned
+   response revision, output hashes and system message with `revision_messages`.
+   This is a plumbing check, never a model study or human judgment. Keep these
+   probe files out of the live campaign.
+5. If TG deploys a different commit before replay completes, stop and resolve
+   the version drift. Do not relabel requests/responses or loosen the pin.
+
+The live writer and first reviewer must not be paid for until this replay
+prerequisite succeeds. Preparation and preflight do not themselves check the
+external TG database or deployment.
 
 ## 2. Prepare and inspect offline (no credentials or network)
 
@@ -314,7 +344,7 @@ Request, written once per model (a changed rewrite is refused):
   "case_id": "draft-123",
   "model": "gpt-6-sol",
   "stage": "draft",
-  "tg_revision": "3df1b314d4d208051045624334b3096479ad4586",
+  "tg_revision": "3540a3422bbe4182151656a772950c5bc1362ab4",
   "draft": {"title": "…", "body": "…", "meta_title": "…", "meta_description": "…", "tags": ["…"]},
   "draft_sha256": "<sha256 of the exact saved writer output text, UTF-8>",
   "ledger": {"results": [], "factual_issues": []},
@@ -344,9 +374,10 @@ database. Place its response at `$OUTPUT/review-replay/<model>.response.json`:
 }
 ```
 
-Exactly these keys are accepted. `draft_sha256`/`review_sha256` must match the
-saved lab outputs and the system message must equal the exported one, otherwise
-resume is refused (exit 2). Then run `pilot resume` (section 5). The response is
+Exactly these keys are accepted. `tg_revision` must be a 7–40-character prefix
+of the pinned TG commit (`review_replay_revision_mismatch` otherwise).
+`draft_sha256`/`review_sha256` must match the saved lab outputs and the system
+message must equal the exported one, otherwise resume is refused (exit 2). Then run `pilot resume` (section 5). The response is
 bound into the revision request's saved custody (its `external_input`), not into
 the approval digest; `review` is kept there as evidence but is not sent. Only
 `revision.messages` is sent.
