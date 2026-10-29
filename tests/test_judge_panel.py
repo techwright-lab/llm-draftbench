@@ -11,12 +11,26 @@ JUDGES = [
     {"judge_id": "oa", "kind": "openai", "model": "gpt-6.1-sol"},
     {"judge_id": "an", "kind": "anthropic", "model": "claude-sonnet-5-5"},
 ]
+GOOGLE = {"judge_id": "go", "kind": "google", "model": "gemini-4-argon"}
 BRIEF = "## Approved Brand Brief\n- Title: Synthetic brief\n"
 CANDIDATES = {
     "model-one": "Draft one body. It has a second sentence.",
     "model-two": "Draft two body. It differs here.",
     "model-three": "Draft three body. Another text entirely.",
 }
+
+
+def test_google_judge_defaults():
+    panel, _ = build_panel(brief=BRIEF, candidates=CANDIDATES, judges=[GOOGLE])
+    assert panel["judges"] == [
+        {
+            "judge_id": "go",
+            "kind": "google",
+            "model": "gemini-4-argon",
+            "thinking_level": "low",
+            "max_output_tokens": 8000,
+        }
+    ]
 
 
 def test_panel_is_blinded_and_deterministic():

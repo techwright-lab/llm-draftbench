@@ -13,7 +13,9 @@ _KEYS = frozenset(
         "DRAFTBENCH_ANTHROPIC_API_KEY",
     }
 )
-JUDGE_KEYS = frozenset({*_KEYS, "DRAFTBENCH_TYPESAFE_API_KEY"})
+JUDGE_KEYS = frozenset(
+    {*_KEYS, "DRAFTBENCH_TYPESAFE_API_KEY", "DRAFTBENCH_GOOGLE_API_KEY"}
+)
 _TOKEN = re.compile(r"[A-Za-z0-9_.:/+@=-]{1,4096}\Z")
 
 

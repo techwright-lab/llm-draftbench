@@ -160,8 +160,8 @@ uv run --offline draftbench judge preflight --panel /path/to/new-panel
 
 Candidates are blinded by content digest; `custody.json` alone maps them back to
 models. `judge run --panel … --env-file … --approve EXACT_PANEL_DIGEST` sends
-each presentation to each judge (TypeSafe Jev typed choices, OpenAI and
-Anthropic strict-schema verdicts with verbatim evidence) and appends an
+each presentation to each judge (TypeSafe Jev typed choices; OpenAI,
+Anthropic and Google strict-schema verdicts with verbatim evidence) and appends an
 immutable ledger; `judge report` ranks from that ledger. Judges are models, not
 editors: the report says `model_judged_not_human`. See
 [the judge contract](schemas/JUDGE_CONTRACT.md).

@@ -13,7 +13,7 @@ from . import JudgeError
 from .criteria import CRITERIA
 
 PANEL_FORMAT = "draftbench-judge-panel-v1"
-JUDGE_KINDS = ("typesafe", "openai", "anthropic")
+JUDGE_KINDS = ("typesafe", "openai", "anthropic", "google")
 MAX_CANDIDATES = 32
 MAX_TEXT_BYTES = 200_000
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
@@ -100,6 +100,12 @@ def _judges(judges):
                 raise JudgeError("invalid_judges")
             entry["effort"] = effort
             entry["max_tokens"] = _bounded(item.get("max_tokens", 4000))
+        elif item["kind"] == "google":
+            level = item.get("thinking_level", "low")
+            if level not in ("low", "medium", "high"):
+                raise JudgeError("invalid_judges")
+            entry["thinking_level"] = level
+            entry["max_output_tokens"] = _bounded(item.get("max_output_tokens", 8000))
         if set(item) - set(entry):
             raise JudgeError("invalid_judges")
         out.append(entry)
