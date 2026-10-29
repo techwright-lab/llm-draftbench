@@ -69,6 +69,12 @@ of its own family. Jev has no model family among the candidates and is not
 pooled. Cross-family pairs are then judged only by judges outside both
 families.
 
+`judge combine --panel A --panel B ... --output FILE` pools the family-blind
+comparisons of two or more panels (one per case) by model name into one
+ranking per criterion. It also keeps each case's own ranking and the Spearman
+rank agreement between every two cases, so a ranking that holds on one brief
+only is visible.
+
 ## Not established
 
 No human reference, no calibration of any judge, no SEO outcome. A one-case

@@ -265,22 +265,21 @@ def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
     assert report["judges"]["jev"]["criteria"]["clarity"]["counts"]["a"] == 6
 
 
-def test_family_blind_drops_own_family_verdicts_and_pools_the_rest(tmp_path):
+def blind_panel(tmp_path, name, *, favourite):
     candidates = {
-        "gpt-6.1-sol": "Sol body. One sentence.",
-        "claude-opus-5-5": "Opus body. Another sentence.",
-        "claude-haiku-5-5": "Haiku body. Third sentence.",
+        "gpt-6.1-sol": f"Sol body for {name}. One sentence.",
+        "claude-opus-5-5": f"Opus body for {name}. Another sentence.",
+        "claude-haiku-5-5": f"Haiku body for {name}. Third sentence.",
     }
     panel, custody = build_panel(
         brief=BRIEF, candidates=candidates, judges=JUDGES + [GOOGLE]
     )
-    root = write_panel(tmp_path / "panel", panel, custody)
-    by_name = {name: cid for cid, name in custody["candidates"].items()}
-    sol = by_name["gpt-6.1-sol"]
+    root = write_panel(tmp_path / name, panel, custody)
+    best = {n: cid for cid, n in custody["candidates"].items()}[favourite]
     rows = []
     for p in panel["presentations"]:
         for judge in ("jev", "oa", "an", "go"):
-            choice = "a" if sol not in (p["a"], p["b"]) or p["a"] == sol else "b"
+            choice = "a" if best not in (p["a"], p["b"]) or p["a"] == best else "b"
             rows.append(
                 {
                     "key": f"{p['presentation_id']}:{judge}",
@@ -294,7 +293,11 @@ def test_family_blind_drops_own_family_verdicts_and_pools_the_rest(tmp_path):
     (root / "ledger.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
     )
+    return root, custody, best
 
+
+def test_family_blind_drops_own_family_verdicts_and_pools_the_rest(tmp_path):
+    root, custody, sol = blind_panel(tmp_path, "one", favourite="gpt-6.1-sol")
     report = build_report(root, custody=custody)
     oa = report["judges"]["oa"]["family_blind"]["clarity"]
     assert sol not in oa["strength"] and oa["scored_presentations"] == 2
@@ -318,3 +321,37 @@ def test_family_blind_needs_custody(tmp_path):
     report = build_report(root)
     assert report["family_blind_consensus"] is None
     assert all(j["family_blind"] is None for j in report["judges"].values())
+
+
+def test_combine_pools_cases_by_model_name_and_reports_case_agreement(tmp_path, capsys):
+    one, _, _ = blind_panel(tmp_path, "one", favourite="gpt-6.1-sol")
+    two, _, _ = blind_panel(tmp_path, "two", favourite="gpt-6.1-sol")
+    three, _, _ = blind_panel(tmp_path, "three", favourite="claude-opus-5-5")
+    output = tmp_path / "combined.json"
+    code = main(
+        [
+            "judge",
+            "combine",
+            "--panel",
+            str(one),
+            "--panel",
+            str(two),
+            "--panel",
+            str(three),
+            "--output",
+            str(output),
+        ]
+    )
+    assert code == 0
+    combined = json.loads(output.read_text())
+    assert combined["models"] == sorted(
+        ["gpt-6.1-sol", "claude-opus-5-5", "claude-haiku-5-5"]
+    )
+    clarity = combined["criteria"]["clarity"]
+    assert clarity["scored_presentations"] == 24
+    assert max(clarity["strength"], key=clarity["strength"].get) == "gpt-6.1-sol"
+    agreement = list(clarity["case_rank_agreement"].values())
+    assert len(agreement) == 3 and max(agreement) == 1.0 and min(agreement) < 1.0
+    assert "across cases" in output.with_suffix(".md").read_text()
+    assert main(["judge", "combine", "--panel", str(one), "--output", str(output)]) == 2
+    assert "two_panels_required" in capsys.readouterr().err

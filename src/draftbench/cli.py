@@ -277,6 +277,13 @@ def _parser() -> argparse.ArgumentParser:
     report_judge.add_argument(
         "--output", required=True, help="New JSON file; .md beside it"
     )
+    combine_judge = judge_commands.add_parser(
+        "combine", help="Family-blind ranking pooled across several panels"
+    )
+    combine_judge.add_argument("--panel", required=True, action="append")
+    combine_judge.add_argument(
+        "--output", required=True, help="New JSON file; .md beside it"
+    )
     return parser
 
 
@@ -321,6 +328,8 @@ def _judge(args) -> int:
                 mode=args.mode,
                 reps=args.reps,
             )
+        elif args.judge_command == "combine":
+            result = report.write_combined(args.panel, args.output)
         else:
             custody = panel_module._read_json(
                 panel_module._directory(args.panel) / "custody.json"
