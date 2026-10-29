@@ -323,7 +323,7 @@ def _summary(packet):
     }
 
 
-def _checked(plan):
+def _checked(plan, *, approve_code=None):
     packet = read_json(plan)
     scope = packet["scope"]
     root = _directory(scope["output"])
@@ -331,14 +331,18 @@ def _checked(plan):
         raise ValueError("invalid_plan_location")
     with CampaignBudget.open(root / "campaign.sqlite3", readonly=True) as campaign:
         current = _scope(scope["paths"], root, campaign)
+    if approve_code is not None:
+        if approve_code != current["code_identity"]:
+            raise ValueError("repair_code_approval_mismatch")
+        current = {**current, "code_identity": scope["code_identity"]}
     if packet["digest"] != digest(scope) or current != scope:
         raise ValueError("pilot_plan_changed")
     return packet, root
 
 
-def preflight(plan):
+def preflight(plan, *, approve_code=None):
     """Read-only, zero egress; no secret loading, account probe or approval."""
-    packet, _ = _checked(plan)
+    packet, _ = _checked(plan, approve_code=approve_code)
     return _summary(packet)
 
 
@@ -464,7 +468,84 @@ def _revision_input(root, model, snapshot):
     return response
 
 
-def run(plan, *, env_file, approve, resume=False, progress=None):
+def _record_code_approval(root, packet, approve_code):
+    if approve_code is None:
+        return
+    from .annotation import _write_new
+
+    directory = root / "code-approvals"
+    if not directory.exists():
+        directory.mkdir(mode=0o700)
+        _fsync(root)
+    _directory(directory)
+    path = directory / f"{approve_code}.json"
+    record = {
+        "format": "draftbench-code-repair-approval-v1",
+        "plan_digest": packet["digest"],
+        "original_code_identity": packet["scope"]["code_identity"],
+        "approved_code_identity": approve_code,
+        "scope_changes": ["code_identity"],
+    }
+    if path.exists() or path.is_symlink():
+        if path.is_symlink() or read_json(path) != record:
+            raise ValueError("repair_approval_changed")
+    else:
+        _write_new(path, canonical_bytes(record))
+
+
+def retry_unsent(plan, *, model, attempt, approve, confirmation, approve_code=None):
+    from .provider_recovery import authorize_unsent_provider
+
+    packet, root = _checked(plan, approve_code=approve_code)
+    if approve != packet["digest"]:
+        raise ValueError("exact_reviewed_approval_required")
+    matching = [
+        item["scope"]["manifest"]
+        for item in packet["scope"]["runs"]
+        if item["scope"]["manifest"]["policy"]["model"] == model
+    ]
+    if len(matching) != 1:
+        raise ValueError("recovery_model_not_planned")
+    with _run_lock(root):
+        again, _ = _checked(plan, approve_code=approve_code)
+        if again != packet:
+            raise ValueError("pilot_plan_changed")
+        _record_code_approval(root, packet, approve_code)
+        return authorize_unsent_provider(
+            root / model, attempt, matching[0], confirmation=confirmation
+        )
+
+
+def recover_receipt(plan, *, model, attempt, approve, approve_code=None):
+    from .provider_recovery import reconcile_provider
+
+    packet, root = _checked(plan, approve_code=approve_code)
+    if approve != packet["digest"]:
+        raise ValueError("exact_reviewed_approval_required")
+    scope = packet["scope"]
+    matching = [
+        item["scope"]["manifest"]
+        for item in scope["runs"]
+        if item["scope"]["manifest"]["policy"]["model"] == model
+    ]
+    if len(matching) != 1:
+        raise ValueError("recovery_model_not_planned")
+    with _run_lock(root):
+        again, _ = _checked(plan, approve_code=approve_code)
+        if again != packet:
+            raise ValueError("pilot_plan_changed")
+        _record_code_approval(root, packet, approve_code)
+        return reconcile_provider(
+            root / model,
+            attempt,
+            matching[0],
+            validate_result=lambda work, result: _validate_outputs(
+                {"work": [{**work, "state": "completed", "result": result}]}, scope
+            ),
+        )
+
+
+def run(plan, *, env_file, approve, resume=False, progress=None, approve_code=None):
     """Only explicit live entry point. Stop globally on uncertain/invalid output.
 
     Each invocation drives at most one role before saved-output schema checks.
@@ -477,7 +558,7 @@ def run(plan, *, env_file, approve, resume=False, progress=None):
     from .provider_workflow import resume_provider, run_provider
 
     refuse_sdk_debug_logging()
-    packet, root = _checked(plan)
+    packet, root = _checked(plan, approve_code=approve_code)
     scope = packet["scope"]
     if approve != packet["digest"] or not scope["tariff"]["reviewed"]:
         raise ValueError("exact_reviewed_approval_required")
@@ -490,9 +571,10 @@ def run(plan, *, env_file, approve, resume=False, progress=None):
     with _run_lock(root), CampaignBudget.open(root / "campaign.sqlite3") as campaign:
         # Recheck under the authority lock. Every child is approved by equality,
         # never by an unconditional callback. No automatic new authority/run IDs.
-        again, _ = _checked(plan)
+        again, _ = _checked(plan, approve_code=approve_code)
         if again != packet:
             raise ValueError("pilot_plan_changed")
+        _record_code_approval(root, packet, approve_code)
         if not resume and any(
             (root / item["scope"]["manifest"]["policy"]["model"]).exists()
             for item in scope["runs"]

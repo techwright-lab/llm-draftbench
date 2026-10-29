@@ -450,9 +450,10 @@ def _inspect_receipt(ledger, store, attempt, request_digest, native):
     )
 
 
-def _write_receipt(root, attempt, receipt):
+def _write_receipt(root, attempt, receipt, *, retry=False):
+    suffix = ".retry-1" if retry else ""
     descriptor = os.open(
-        root / f"attempt-{attempt}.json",
+        root / f"attempt-{attempt}{suffix}.json",
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
         0o600,
     )
@@ -463,9 +464,17 @@ def _write_receipt(root, attempt, receipt):
     _fsync(root)
 
 
-def native_receipt(ledger, store, state):
+def receipt_path(ledger, state, *, original=False):
+    retried = not original and any(
+        row["attempt_id"] == state["attempt_id"] for row in ledger.dispatch_retries()
+    )
+    suffix = ".retry-1" if retried else ""
+    return ledger._path.parent / f"attempt-{state['attempt_id']}{suffix}.json"
+
+
+def native_receipt(ledger, store, state, *, original=False):
     root = ledger._path.parent
-    path = root / f"attempt-{state['attempt_id']}.json"
+    path = receipt_path(ledger, state, original=original)
     data = strict_json_loads(_Reader(root).read(path).decode("utf-8"))
     if (
         set(data) != {"attempt_id", "request_digest", "native_digest"}

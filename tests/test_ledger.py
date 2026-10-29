@@ -58,6 +58,46 @@ def finish(ledger, work_id):
     return attempt
 
 
+def test_explicit_receipt_recovery_preserves_history_and_attempt(path):
+    with Ledger.create(path, [item()], MANIFEST) as value:
+        attempt = value.reserve("write", REQUEST)
+        value.start(attempt)
+        value.recover()
+        previous = value.events()
+        value.reconcile_result(attempt, RESULT, "d" * 64)
+        value.complete(attempt)
+        assert value.events()[: len(previous)] == previous
+        assert value.summary()["attempt_count"] == 1
+        assert value.state("write")["state"] == "completed"
+        value.reconcile_result(attempt, RESULT, "d" * 64)
+        with pytest.raises(LedgerError):
+            value.reconcile_result(attempt, "e" * 64, "d" * 64)
+    with Ledger.open(path, readonly=True) as reopened:
+        assert reopened.state("write")["state"] == "completed"
+        assert reopened.reconciliations()[0]["receipt_digest"] == "d" * 64
+
+
+def test_explicit_unsent_retry_preserves_original_failure(path):
+    with Ledger.create(path, [item()], MANIFEST) as value:
+        attempt = value.reserve("write", REQUEST)
+        value.start(attempt)
+        value.recover()
+        previous = value.events()
+        assert value.authorize_unsent_retry(attempt, "d" * 64, "e" * 64) == 1
+        assert value.events()[: len(previous)] == previous
+        assert value.state("write")["state"] == "reserved"
+        value.start(attempt)
+        value.record_result(attempt, RESULT)
+        value.complete(attempt)
+        assert (
+            len([event for event in value.events() if event["state"] == "in_flight"])
+            == 2
+        )
+    with Ledger.open(path, readonly=True) as reopened:
+        assert reopened.state("write")["state"] == "completed"
+        assert reopened.dispatch_retries()[0]["receipt_digest"] == "d" * 64
+
+
 def test_atomic_initial_plan_manifest_and_private_permissions(path):
     plan = [item(), item("review", role="reviewer", dependencies=["write"])]
     with Ledger.create(path, plan, MANIFEST) as ledger:

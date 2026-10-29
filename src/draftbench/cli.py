@@ -191,6 +191,27 @@ def _parser() -> argparse.ArgumentParser:
         "preflight", help="Revalidate exact plan offline; never approve"
     )
     check.add_argument("--plan", required=True)
+    check.add_argument(
+        "--approve-code", help="Exact reviewed code-only repair identity"
+    )
+    recovery = pilots.add_parser(
+        "recover-receipt",
+        help="OFFLINE: reconcile a saved successful response, never dispatch",
+    )
+    for name in ("plan", "model", "attempt", "approve"):
+        recovery.add_argument("--" + name, required=True)
+    recovery.add_argument(
+        "--approve-code", help="Exact reviewed code-only repair identity"
+    )
+    retry = pilots.add_parser(
+        "retry-unsent",
+        help="OFFLINE: authorize one operator-confirmed unsent transport retry",
+    )
+    for name in ("plan", "model", "attempt", "approve", "confirm-unsent"):
+        retry.add_argument("--" + name, required=True)
+    retry.add_argument(
+        "--approve-code", help="Exact reviewed code-only repair identity"
+    )
     for command in ("run", "resume"):
         sub = pilots.add_parser(
             command,
@@ -198,6 +219,9 @@ def _parser() -> argparse.ArgumentParser:
         )
         sub.add_argument("--plan", required=True)
         sub.add_argument("--env-file", required=True)
+        sub.add_argument(
+            "--approve-code", help="Exact reviewed code-only repair identity"
+        )
         sub.add_argument(
             "--quiet-progress",
             action="store_true",
@@ -238,7 +262,24 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 )
             elif args.pilot_command == "preflight":
-                result = pilot.preflight(args.plan)
+                result = pilot.preflight(args.plan, approve_code=args.approve_code)
+            elif args.pilot_command == "retry-unsent":
+                result = pilot.retry_unsent(
+                    args.plan,
+                    model=args.model,
+                    attempt=args.attempt,
+                    approve=args.approve,
+                    confirmation=args.confirm_unsent,
+                    approve_code=args.approve_code,
+                )
+            elif args.pilot_command == "recover-receipt":
+                result = pilot.recover_receipt(
+                    args.plan,
+                    model=args.model,
+                    attempt=args.attempt,
+                    approve=args.approve,
+                    approve_code=args.approve_code,
+                )
             else:
                 from .progress import terminal_progress
 
@@ -248,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
                     approve=args.approve,
                     resume=args.pilot_command == "resume",
                     progress=None if args.quiet_progress else terminal_progress(),
+                    approve_code=args.approve_code,
                 )
             print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
             return 0 if result.get("complete", True) else 3

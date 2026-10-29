@@ -349,8 +349,12 @@ def sdk(monkeypatch):
     faults = {}
 
     def handler(request):
+        if request.url.host == "api.anthropic.com":
+            assert "authorization" not in request.headers
         wire = json.loads(request.content)
         openai_wire = wire["model"].startswith("gpt")
+        if faults.get("unsent") and not openai_wire:
+            raise httpx.LocalProtocolError("Illegal header value b'Bearer '")
         if openai_wire:
             reviewer = wire["text"]["format"]["name"] == "ReviewLedgerSchema"
             assert request.url == "https://api.openai.com/v1/responses"
@@ -545,6 +549,152 @@ def pilot_args(packet, tmp_path, approval):
         "--approve",
         approval,
     ]
+
+
+def test_explicit_unsent_anthropic_retry_is_audited(packet, sdk, tmp_path, monkeypatch):
+    prepared = pilot.prepare(**packet)
+    env = secret(tmp_path)
+    sdk[1]["unsent"] = True
+    result = pilot.run(
+        packet["plan"], env_file=env, approve=prepared["approval_digest"]
+    )
+    assert result["complete"] is False
+    run = packet["output"] / "claude-sonnet-5"
+    attempt = snapshot_provider(run)["work"][0]["attempt_id"]
+    before = len(sdk[0])
+    result = pilot.retry_unsent(
+        packet["plan"],
+        model="claude-sonnet-5",
+        attempt=attempt,
+        approve=prepared["approval_digest"],
+        confirmation="anthropic-empty-bearer-header",
+    )
+    assert result["provider_calls"] == 0
+    assert len(sdk[0]) == before
+    sdk[1]["unsent"] = False
+    with monkeypatch.context() as patch:
+
+        def broken_usage(*args):
+            raise ValueError("invalid_usage")
+
+        patch.setattr("draftbench.adapters.anthropic._usage", broken_usage)
+        stopped = pilot.run(
+            packet["plan"],
+            env_file=env,
+            approve=prepared["approval_digest"],
+            resume=True,
+        )
+    assert stopped["complete"] is False
+    assert (run / f"attempt-{attempt}.retry-1.json").exists()
+    recovered = pilot.recover_receipt(
+        packet["plan"],
+        model="claude-sonnet-5",
+        attempt=attempt,
+        approve=prepared["approval_digest"],
+    )
+    assert recovered["provider_calls"] == 0
+    result = pilot.run(
+        packet["plan"], env_file=env, approve=prepared["approval_digest"], resume=True
+    )
+    assert result["waiting"] == "tg_review_replay_required"
+    assert len(sdk[0]) == 6
+    from draftbench.ledger import Ledger
+
+    with Ledger.open(run / "ledger.sqlite3", readonly=True) as ledger:
+        assert len(ledger.dispatch_retries()) == 1
+        assert sum(event["state"] == "in_flight" for event in ledger.events()) == 3
+        assert any(event["state"] == "uncertain" for event in ledger.events())
+
+
+def test_recover_saved_success_without_repeating_call(
+    packet, sdk, tmp_path, monkeypatch
+):
+    prepared = pilot.prepare(**packet)
+    env = secret(tmp_path)
+    with monkeypatch.context() as patch:
+
+        def broken_usage(*args):
+            raise ValueError("invalid_usage")
+
+        patch.setattr("draftbench.adapters.openai._usage", broken_usage)
+        result = pilot.run(
+            packet["plan"], env_file=env, approve=prepared["approval_digest"]
+        )
+    assert result["complete"] is False
+    assert len(sdk[0]) == 1
+    snapshot = snapshot_provider(packet["output"] / pilot.MODELS[0])
+    attempt = snapshot["work"][0]["attempt_id"]
+    recovered = pilot.recover_receipt(
+        packet["plan"],
+        model=pilot.MODELS[0],
+        attempt=attempt,
+        approve=prepared["approval_digest"],
+    )
+    assert recovered["recovered"] is True
+    assert len(sdk[0]) == 1
+    pilot.recover_receipt(
+        packet["plan"],
+        model=pilot.MODELS[0],
+        attempt=attempt,
+        approve=prepared["approval_digest"],
+    )
+    result = pilot.run(
+        packet["plan"], env_file=env, approve=prepared["approval_digest"], resume=True
+    )
+    assert result["waiting"] == "tg_review_replay_required"
+    assert len(sdk[0]) == 6
+
+
+@pytest.mark.parametrize("fault", ["timeout", "malformed"])
+def test_receipt_recovery_refuses_no_response_or_invalid_output(
+    packet, sdk, tmp_path, monkeypatch, fault
+):
+    prepared = pilot.prepare(**packet)
+    sdk[1][fault] = True
+    with monkeypatch.context() as patch:
+
+        def broken_usage(*args):
+            raise ValueError("invalid_usage")
+
+        patch.setattr("draftbench.adapters.openai._usage", broken_usage)
+        pilot.run(
+            packet["plan"],
+            env_file=secret(tmp_path),
+            approve=prepared["approval_digest"],
+        )
+    run = packet["output"] / pilot.MODELS[0]
+    before = snapshot_provider(run)
+    with pytest.raises(ValueError):
+        pilot.recover_receipt(
+            packet["plan"],
+            model=pilot.MODELS[0],
+            attempt=before["work"][0]["attempt_id"],
+            approve=prepared["approval_digest"],
+        )
+    assert snapshot_provider(run) == before
+    assert len(sdk[0]) == 1
+
+
+def test_code_only_repair_approval_does_not_rewrite_plan_or_allow_other_drift(
+    packet, monkeypatch
+):
+    prepared = pilot.prepare(**packet)
+    original = packet["plan"].read_bytes()
+    monkeypatch.setattr(pilot, "code_identity", lambda: "a" * 64)
+    with pytest.raises(ValueError, match="pilot_plan_changed"):
+        pilot.preflight(packet["plan"])
+    assert (
+        pilot.preflight(packet["plan"], approve_code="a" * 64)["approval_digest"]
+        == prepared["approval_digest"]
+    )
+    assert packet["plan"].read_bytes() == original
+    with pytest.raises(ValueError):
+        pilot.preflight(packet["plan"], approve_code="b" * 64)
+    config = json.loads(packet["config"].read_text())
+    config["account_route"] = "different"
+    packet["config"].write_text(json.dumps(config))
+    with pytest.raises(ValueError):
+        pilot.preflight(packet["plan"], approve_code="a" * 64)
 
 
 def test_quiet_progress_preserves_json_output(packet, sdk, tmp_path, capsys):

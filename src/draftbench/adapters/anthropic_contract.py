@@ -77,6 +77,8 @@ def _usage(native, policy):
             raise ValueError("invalid_usage")
         if usage.get("service_tier") not in (None, "standard"):
             raise ValueError("invalid_usage")
+        if usage.get("speed") not in (None, "standard"):
+            raise ValueError("invalid_usage")
         known = {
             "input_tokens",
             "output_tokens",
@@ -87,6 +89,7 @@ def _usage(native, policy):
             "server_tool_use",
             "service_tier",
             "inference_geo",
+            "speed",
         }
         for key in usage.keys() - known:
             if usage[key] is not None:

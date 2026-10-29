@@ -387,6 +387,82 @@ After the reviewer of the revision completes, the pilot writes
 TrustGrowth can produce the final verdict on the revision. No further call is
 made.
 
+## Explicit code repair and saved-receipt reconciliation
+
+A successful provider response can be marked uncertain when a local parser does
+not understand new metadata. For example, OpenAI now reports nonzero
+`input_tokens_details.cache_write_tokens`; token counts are retained, but the
+cost estimate stays unknown until that cache-write tariff is understood. Never
+drop those tokens to manufacture an estimate or regenerate a paid draft merely
+because metadata parsing failed.
+
+Normal preflight and resume still refuse code drift. After explicit operator
+authorization for a reviewed **code-only** repair, pass the exact new
+`draftbench.pilot.code_identity()` digest as `--approve-code` to preflight,
+resume and, when needed, `recover-receipt`. This exception allows only the code
+fingerprint to differ: original plan bytes, account route, model policies,
+tariffs, dependency versions, source data, TG pin and campaign must still match.
+`--approve` remains the original reviewed plan digest. Passing the code identity
+is a separate explicit approval, never inferred from a stored file. Mutating
+commands append a private `code-approvals/<identity>.json` audit record.
+
+For a specific uncertain attempt with a durable, successful native response:
+
+```sh
+draftbench pilot recover-receipt --plan "$PLAN" \
+  --model gpt-6-luna --attempt EXACT_ATTEMPT_ID \
+  --approve EXACT_ORIGINAL_PLAN_DIGEST --approve-code EXACT_REVIEWED_CODE_IDENTITY
+```
+
+This command is offline: no credentials, provider SDK, request, retry or new
+campaign reservation. It checks the original manifest/request/parent bindings,
+reconstructs the result from the immutable native response, runs provider and
+pinned output-schema validation, and stores a new result artifact. It retains
+the original receipt and the original uncertain event, then appends a
+receipt-bound reconciliation and completion under the same attempt ID. Missing,
+incomplete, mismatched or schema-invalid responses are refused. Repeating the
+same reconciliation is idempotent; a different result binding is refused.
+
+The child ledger is transactionally extended to schema version 2 when its first
+reconciliation succeeds; existing event rows and the campaign database are not
+rewritten. Older code cannot open that extended ledger. Use repaired code for
+subsequent reporting and resume. Readers validate the reconstructed result
+against the original receipt; the ledger history is not relabelled as though no
+failure occurred. A code-only repair approval does not authorize changing input
+content, weakening output validation, or silently retrying a provider call.
+
+### Confirmed-unsent Anthropic transport failure
+
+An empty SDK `auth_token` formerly generated an invalid `Authorization: Bearer `
+header. Real HTTP/1 transport rejects it locally (`LocalProtocolError`); a mock
+transport did not. The corrected adapter explicitly omits Authorization while
+retaining the selected API key and blocking ambient bearer credentials.
+
+Only after an operator establishes that this specific failure happened before
+request transmission, one explicit retry can be authorized:
+
+```sh
+draftbench pilot retry-unsent --plan "$PLAN" \
+  --model claude-sonnet-5 --attempt EXACT_ATTEMPT_ID \
+  --confirm-unsent anthropic-empty-bearer-header \
+  --approve EXACT_ORIGINAL_PLAN_DIGEST --approve-code EXACT_REVIEWED_CODE_IDENTITY
+```
+
+This command itself never dispatches. It only accepts an uncertain Anthropic
+connection-error receipt with no native response or request ID. That shape alone
+is **not proof of non-transmission**: the confirmation is an operator attestation
+backed by a concrete transport diagnosis, never an automatic retry rule. A
+normal timeout or ambiguous remote connection failure is not eligible merely
+because it has no response. Then explicitly `pilot resume` with both approvals.
+
+The child ledger's version-3 extension retains the first uncertain event and
+receipt, appends the confirmation and a reserved event under the same logical
+attempt, and permits one extra dispatch. If that dispatch fails, its receipt is
+saved separately as `attempt-<id>.retry-1.json`; the original is never replaced.
+Reports expose `dispatch_count` and `operator_confirmed_unsent_retries` alongside
+logical attempt count. Existing campaign reservations are retained, not refunded
+or duplicated. Only confirmed-unsent work may reuse that reservation.
+
 ## 5. Resume, inspect and review without inventing results
 
 After an ordinary interruption, first inspect saved state offline:

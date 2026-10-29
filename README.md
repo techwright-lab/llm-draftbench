@@ -181,7 +181,11 @@ Provider limits still apply. The legacy v2 configuration remains bounded.
 model, stage, state, elapsed time, attempt count, completed-call tokens and
 estimated cost. Final JSON stays on stdout; `--quiet-progress` suppresses the
 progress display. No prompts, outputs or credentials are printed. Missing usage
-is unknown, and estimated cost is never claimed as billed cost.
+is unknown, and estimated cost is never claimed as billed cost. Cache-write
+usage is retained without inventing a cache-write price; Anthropic's standard
+speed metadata is accepted. See the operator guide for explicit code-only
+repair approval, receipt-based reconciliation without regeneration, and the
+separate operator-confirmed unsent transport retry. None happens automatically.
 
 See `examples/pilot/config.tracking.example.json` and the
 [tracking-only operator guide](schemas/PILOT_OPERATOR.md#tracking-only-eight-model-pilot).
