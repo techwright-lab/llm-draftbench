@@ -249,7 +249,7 @@ def test_invalid_cli_arguments_do_not_echo_private_tokens(capsys):
     assert "PRIVATE-ARGUMENT" not in capsys.readouterr().err
 
 
-def test_judge_credentials_require_all_five_names(tmp_path):
+def test_judge_credentials_require_all_six_names(tmp_path):
     from draftbench.credentials import JUDGE_KEYS, load_credentials
 
     path = tmp_path / "judge.env"
@@ -269,7 +269,20 @@ def test_judge_credentials_require_all_five_names(tmp_path):
         "DRAFTBENCH_ANTHROPIC_API_KEY",
     }
     path.write_text("\n".join(lines + ["DRAFTBENCH_TYPESAFE_API_KEY=ts-token"]) + "\n")
+    with pytest.raises(ValueError, match="invalid_explicit_credentials"):
+        load_credentials(path, JUDGE_KEYS)
+    path.write_text(
+        "\n".join(
+            lines
+            + [
+                "DRAFTBENCH_TYPESAFE_API_KEY=ts-token",
+                "DRAFTBENCH_GOOGLE_API_KEY=g-token",
+            ]
+        )
+        + "\n"
+    )
     values = load_credentials(path, JUDGE_KEYS)
+    assert values["DRAFTBENCH_GOOGLE_API_KEY"] == "g-token"
     assert values["DRAFTBENCH_TYPESAFE_API_KEY"] == "ts-token"
     with pytest.raises(ValueError, match="invalid_explicit_credentials"):
         load_credentials(path)

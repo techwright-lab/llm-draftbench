@@ -28,7 +28,10 @@ Criteria: `brief_fidelity`, `evidence_discipline`, `clarity`, `insight`,
   verdicts carry no evidence. Input price is recorded from the public docs as an
   estimate, not an invoice.
 - `openai` (Responses API) and `anthropic` (Messages API) through the same
-  pinned SDKs as the pilot, with a strict `PairwiseVerdictSchema`. A verdict must
+  pinned SDKs as the pilot, and `google` (Gemini `generateContent`, v1beta)
+  through `google-genai==2.30.1` with `vertexai=False`, one attempt and an
+  explicit key, all with a strict `PairwiseVerdictSchema`. Gemini thought
+  parts are dropped before parsing; thinking tokens are counted in output. A verdict must
   quote one verbatim sentence from draft A or draft B. A quote found in neither
   draft turns that verdict into `unknown`; it is counted, never scored.
 
@@ -38,7 +41,7 @@ report shows inter-judge agreement so that bias can be read, not hidden.
 ## Run and ledger
 
 `judge run` requires the exact panel digest and an explicit credential file with
-all five names (`examples/judge/judge.env.example`). It refuses while
+all six names (`examples/judge/judge.env.example`). It refuses while
 `OPENAI_LOG` or `ANTHROPIC_LOG` is set. Every attempt appends one line to
 `ledger.jsonl` with the native response; the latest successful record per
 `presentation:judge` key wins. Resume skips completed keys. An authentication

@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from test_judge_panel import BRIEF, CANDIDATES, JUDGES
+from test_judge_panel import BRIEF, CANDIDATES, GOOGLE, JUDGES
 
 from draftbench.judge import generative, jev
 from draftbench.judge.criteria import CRITERION_IDS
@@ -333,3 +333,127 @@ def test_jev_pointwise_rejects_out_of_range_score():
         result["status"] == "uncertain"
         and result["error_code"] == "invalid_native_response"
     )
+
+
+def google_native(text, finish="STOP"):
+    return {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {"text": "private reasoning", "thought": True},
+                        {"text": text},
+                    ],
+                },
+                "finishReason": finish,
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 80,
+            "candidatesTokenCount": 25,
+            "thoughtsTokenCount": 15,
+            "totalTokenCount": 120,
+        },
+        "modelVersion": "gemini-4-argon",
+        "responseId": "resp_g",
+    }
+
+
+def google_panel():
+    return build_panel(brief=BRIEF, candidates=CANDIDATES, judges=[GOOGLE])[0]
+
+
+def test_google_judge_wire_and_parse():
+    import httpx
+
+    pytest.importorskip("google.genai")
+    p = google_panel()
+    presentation = p["presentations"][0]
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200, json=google_native(verdict_json(p, presentation, "a", "a"))
+        )
+
+    result = generative.invoke(
+        p["judges"][0], p, presentation, transport=httpx.MockTransport(handler)
+    )
+    assert len(calls) == 1
+    assert (
+        str(calls[0].url)
+        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent"
+    )
+    assert calls[0].headers["x-goog-api-key"] == "fixture-not-a-credential"
+    body = json.loads(calls[0].content)
+    config = body["generationConfig"]
+    assert config["responseMimeType"] == "application/json"
+    assert config["responseJsonSchema"]["required"] == ["verdicts"]
+    assert config["maxOutputTokens"] == 8000
+    assert config["thinkingConfig"] == {"thinking_level": "LOW"}
+    assert body["systemInstruction"]["parts"][0]["text"].startswith(
+        "You compare two drafts"
+    )
+    assert "## Draft A" in body["contents"][0]["parts"][0]["text"]
+    assert result["status"] == "success", result.get("error_code")
+    assert (
+        result["served_model"] == "gemini-4-argon" and result["request_id"] == "resp_g"
+    )
+    assert result["verdicts"]["clarity"]["choice"] == "a"
+    assert result["usage"] == {
+        "input_tokens": 80,
+        "output_tokens": 40,
+        "thinking_tokens": 15,
+        "cached_input_tokens": None,
+    }
+
+
+def test_google_judge_truncation_and_auth():
+    import httpx
+
+    pytest.importorskip("google.genai")
+    p = google_panel()
+    presentation = p["presentations"][0]
+    truncated = generative.invoke(
+        p["judges"][0],
+        p,
+        presentation,
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(200, json=google_native("{", finish="MAX_TOKENS"))
+        ),
+    )
+    assert (
+        truncated["status"] == "uncertain"
+        and truncated["error_code"] == "invalid_native_response"
+    )
+    rejected = generative.invoke(
+        p["judges"][0],
+        p,
+        presentation,
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": 403,
+                        "message": "x",
+                        "status": "PERMISSION_DENIED",
+                    }
+                },
+            )
+        ),
+    )
+    assert rejected["error_code"] == "auth_rejected"
+    server = generative.invoke(
+        p["judges"][0],
+        p,
+        presentation,
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(
+                500, json={"error": {"code": 500, "message": "x", "status": "INTERNAL"}}
+            )
+        ),
+    )
+    assert server["error_code"] == "provider_http_error"

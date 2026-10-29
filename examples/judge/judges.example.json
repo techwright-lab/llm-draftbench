@@ -1,5 +1,6 @@
 [
   {"judge_id": "jev", "kind": "typesafe", "model": "jev-1.14.0"},
   {"judge_id": "openai-sol", "kind": "openai", "model": "gpt-6.1-sol", "reasoning_effort": "low", "max_output_tokens": 4000},
-  {"judge_id": "anthropic-sonnet", "kind": "anthropic", "model": "claude-sonnet-5-5", "effort": "low", "max_tokens": 4000}
+  {"judge_id": "anthropic-sonnet", "kind": "anthropic", "model": "claude-sonnet-5-5", "effort": "low", "max_tokens": 4000},
+  {"judge_id": "google-argon", "kind": "google", "model": "gemini-4-argon", "thinking_level": "low", "max_output_tokens": 8000}
 ]

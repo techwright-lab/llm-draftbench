@@ -1,4 +1,4 @@
-"""Generative judges through the pinned OpenAI and Anthropic SDKs.
+"""Generative judges through the pinned OpenAI, Anthropic and Google SDKs.
 
 A fail-style verdict needs a verbatim quote from one of the two drafts; a verdict
 whose evidence is not in either draft is recorded as unknown, never as a choice.
@@ -10,6 +10,8 @@ import time
 from ..adapters import anthropic_contract, openai_contract
 from .criteria import CHOICES, JUDGE_MANDATE
 
+GOOGLE_SDK_VERSION = "2.30.1"
+GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/"
 TIMEOUT_SECONDS = 300.0
 SCHEMA_NAME = "PairwiseVerdictSchema"
 _SPACE = re.compile(r"\s+")
@@ -63,6 +65,18 @@ def user_message(panel, presentation):
 def native_request(judge, panel, presentation):
     schema = wire_schema([item["criterion_id"] for item in panel["criteria"]])
     user = user_message(panel, presentation)
+    if judge["kind"] == "google":
+        return {
+            "model": judge["model"],
+            "contents": [{"role": "user", "parts": [{"text": user}]}],
+            "config": {
+                "system_instruction": JUDGE_MANDATE,
+                "response_mime_type": "application/json",
+                "response_json_schema": schema,
+                "max_output_tokens": judge["max_output_tokens"],
+                "thinking_config": {"thinking_level": judge["thinking_level"]},
+            },
+        }
     if judge["kind"] == "openai":
         return {
             "model": judge["model"],
@@ -129,12 +143,18 @@ def invoke(judge, panel, presentation, *, transport=None, credentials=None):
         ) as http:
             if judge["kind"] == "openai":
                 native, request_id, text = _openai(request, http, fixture, credentials)
+            elif judge["kind"] == "google":
+                native, request_id, text = _google(request, http, fixture, credentials)
             else:
                 native, request_id, text = _anthropic(
                     request, http, fixture, credentials
                 )
         result.update(native_output=native, request_id=request_id)
-        result["served_model"] = native.get("model") if type(native) is dict else None
+        result["served_model"] = (
+            native.get("modelVersion" if judge["kind"] == "google" else "model")
+            if type(native) is dict
+            else None
+        )
         result["usage"] = _usage(native, judge["kind"])
         result["verdicts"] = _verdicts(text, panel, presentation)
         result["status"] = "success"
@@ -223,8 +243,55 @@ def _anthropic(request, http, fixture, credentials):
     return native, request_id, text
 
 
+def _google(request, http, fixture, credentials):
+    from importlib.metadata import version
+
+    from google import genai
+    from google.genai import types
+
+    if version("google-genai") != GOOGLE_SDK_VERSION:
+        raise ValueError("google_version_mismatch")
+    wire = []
+    http.event_hooks["response"].append(lambda response: wire.append(response))
+    client = genai.Client(
+        vertexai=False,
+        api_key="fixture-not-a-credential"
+        if fixture
+        else credentials.get("DRAFTBENCH_GOOGLE_API_KEY"),
+        http_options=types.HttpOptions(
+            base_url=GOOGLE_BASE_URL,
+            api_version="v1beta",
+            timeout=int(TIMEOUT_SECONDS * 1000),
+            retry_options=types.HttpRetryOptions(attempts=1),
+            httpx_client=http,
+        ),
+    )
+    try:
+        client.models.generate_content(
+            model=request["model"],
+            contents=request["contents"],
+            config=types.GenerateContentConfig(**request["config"]),
+        )
+    except Exception as exc:
+        _reject_auth(exc)
+        raise
+    if len(wire) != 1:
+        raise ValueError("invalid_native_response")
+    wire[0].read()
+    native = wire[0].json()
+    candidates = native.get("candidates") or []
+    if len(candidates) != 1 or candidates[0].get("finishReason") != "STOP":
+        raise ValueError("incomplete_native_response")
+    text = "".join(
+        part["text"]
+        for part in candidates[0].get("content", {}).get("parts", [])
+        if "text" in part and not part.get("thought")
+    )
+    return native, native.get("responseId"), text
+
+
 def _reject_auth(exc):
-    status = getattr(exc, "status_code", None)
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     if status in (401, 403):
         raise _AuthRejected from None
 
@@ -235,12 +302,16 @@ def _error_code(exc):
         return "provider_timeout"
     if name in ("APIConnectionError", "TransportError", "ConnectError"):
         return "provider_connection_error"
-    if name == "APIStatusError" or hasattr(exc, "status_code"):
+    if name in ("APIStatusError", "APIError", "ClientError", "ServerError") or hasattr(
+        exc, "status_code"
+    ):
         return "provider_http_error"
     return "invalid_native_response"
 
 
 def _usage(native, kind):
+    if kind == "google":
+        return _google_usage(native)
     usage = native.get("usage") if type(native) is dict else None
     if type(usage) is not dict:
         return None
@@ -255,6 +326,23 @@ def _usage(native, kind):
             value = usage.get(key)
             out[key] = value if type(value) is int and value >= 0 else None
     return out
+
+
+def _google_usage(native):
+    usage = native.get("usageMetadata") if type(native) is dict else None
+    if type(usage) is not dict:
+        return None
+    prompt = usage.get("promptTokenCount")
+    visible = usage.get("candidatesTokenCount", 0)
+    thoughts = usage.get("thoughtsTokenCount", 0)
+    if any(type(v) is not int or v < 0 for v in (prompt, visible, thoughts)):
+        return None
+    return {
+        "input_tokens": prompt,
+        "output_tokens": visible + thoughts,
+        "thinking_tokens": thoughts,
+        "cached_input_tokens": usage.get("cachedContentTokenCount"),
+    }
 
 
 def _verdicts(text, panel, presentation):
