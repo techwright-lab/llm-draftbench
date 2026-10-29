@@ -62,8 +62,8 @@ def _usage(native, policy):
         # Validate WIRE types before equality: False and 0.0 compare equal to 0.
         # Cached input gets no discount; reasoning is included in output tokens.
         for key, allowed, total in (
-            ("input_tokens_details", "cached_tokens", i),
-            ("output_tokens_details", "reasoning_tokens", o),
+            ("input_tokens_details", {"cached_tokens", "cache_write_tokens"}, i),
+            ("output_tokens_details", {"reasoning_tokens"}, o),
         ):
             details = usage.get(key)
             if details is None:
@@ -75,8 +75,10 @@ def _usage(native, policy):
                     continue
                 if type(value) is not int or not 0 <= value <= total:
                     raise ValueError()
-                if field != allowed and value != 0:
+                if field not in allowed and value != 0:
                     raise ValueError()
+        if (usage.get("input_tokens_details") or {}).get("cache_write_tokens", 0):
+            return usage, None
         if i > 272000:
             if getattr(policy, "tracking_only", False):
                 return usage, None

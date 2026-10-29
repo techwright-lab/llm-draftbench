@@ -44,7 +44,13 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
             raise ValueError("verified_tariff_required")
     preflight(transport)
     import httpx
-    from anthropic import Anthropic, APIConnectionError, APIStatusError, APITimeoutError
+    from anthropic import (
+        Anthropic,
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        omit,
+    )
 
     fixture = transport is not None
     result = dict(
@@ -78,7 +84,10 @@ def invoke(policy, prompt, *, transport=None, authorization=None, api_key=None):
                 auth_token="",
                 base_url=BASE_URL,
                 max_retries=0,
-                default_headers={"anthropic-version": "2023-06-01"},
+                default_headers={
+                    "anthropic-version": "2023-06-01",
+                    "Authorization": omit,
+                },
                 timeout=policy.timeout_seconds,
                 http_client=http,
             ) as client:

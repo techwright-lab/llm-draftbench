@@ -420,6 +420,9 @@ def _drive(
                     "request_digest": request_digest,
                     "native_digest": result_digest,
                 },
+                retry=any(
+                    row["attempt_id"] == attempt for row in ledger.dispatch_retries()
+                ),
             )
             if result["status"] == "uncertain":
                 ledger.recover()

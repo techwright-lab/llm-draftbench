@@ -91,6 +91,8 @@ def _manifest(root, ledger, store):
 def _report(ledger, store, manifest):
     policy = parse_policy(manifest["policy"])
     summary = ledger.summary()
+    reconciled = {row["attempt_id"]: row for row in ledger.reconciliations()}
+    retried = {row["attempt_id"]: row for row in ledger.dispatch_retries()}
     for work in ledger.plan():
         state = ledger.state(work["work_id"])
         if state["request_digest"]:
@@ -101,11 +103,25 @@ def _report(ledger, store, manifest):
             if digest(envelope) != state["request_digest"]:
                 raise ValueError("request_identity_mismatch")
             prompt = work_prompt(work, envelope)
-            receipt_path = ledger._path.parent / f"attempt-{state['attempt_id']}.json"
+            from .workflow import native_receipt, receipt_path
+
+            current_receipt = receipt_path(ledger, state)
+            if state["attempt_id"] in retried:
+                record = retried[state["attempt_id"]]
+                original = native_receipt(ledger, store, state, original=True)
+                evidence = store.get_json(record["evidence_digest"])
+                if digest(original) != record["receipt_digest"] or evidence != {
+                    "format": "draftbench-unsent-retry-v1",
+                    "attempt_id": state["attempt_id"],
+                    "manifest_digest": ledger.manifest_digest,
+                    "receipt_digest": record["receipt_digest"],
+                    "operator_confirmation": "anthropic-empty-bearer-header",
+                }:
+                    raise ValueError("retry_evidence_mismatch")
             if (
                 state["state"] in ("failed", "limited")
-                or receipt_path.exists()
-                or receipt_path.is_symlink()
+                or current_receipt.exists()
+                or current_receipt.is_symlink()
             ):
                 from .workflow import native_receipt
 
@@ -121,6 +137,21 @@ def _report(ledger, store, manifest):
                 result = store.get_json(state["result_digest"])
 
                 verify_result(result, policy, prompt, manifest["provenance"])
+                if state["attempt_id"] in reconciled:
+                    from .provider_recovery import success_from_receipt
+                    from .workflow import native_receipt
+
+                    record = reconciled[state["attempt_id"]]
+                    original = native_receipt(ledger, store, state)
+                    restored = success_from_receipt(
+                        original, policy, prompt, manifest["provenance"]
+                    )
+                    if (
+                        digest(original) != record["receipt_digest"]
+                        or digest(restored) != state["result_digest"]
+                        or record["result_digest"] != state["result_digest"]
+                    ):
+                        raise ValueError("recovery_evidence_mismatch")
                 if (
                     result["request_digest"] != state["request_digest"]
                     or result["parent_digests"] != envelope["parent_digests"]
@@ -146,6 +177,10 @@ def _report(ledger, store, manifest):
         if policy.tracking_only
         else policy.reserved_tokens * summary["attempt_count"],
         "billing_reconciled": False,
+        "dispatch_count": sum(
+            event["state"] == "in_flight" for event in ledger.events()
+        ),
+        "operator_confirmed_unsent_retries": len(retried),
     }
 
 

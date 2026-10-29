@@ -54,6 +54,7 @@ _MOVES = {
     "reserved": {"in_flight"},
     "in_flight": {"result_saved", "failed", "limited", "uncertain"},
     "result_saved": {"completed"},
+    "uncertain": {"result_saved", "reserved"},
 }
 
 
@@ -250,6 +251,67 @@ _GUARDS = (
     )
 )
 _SCHEMA = _TABLES + _GUARDS
+_RECOVERY_TABLE = f"""CREATE TABLE reconciliations (
+    attempt_id TEXT PRIMARY KEY NOT NULL REFERENCES attempts(attempt_id),
+    receipt_digest TEXT NOT NULL CHECK({_sql_hex("receipt_digest")}),
+    result_digest TEXT NOT NULL CHECK({_sql_hex("result_digest")})
+)"""
+_RECOVERY_GUARDS = tuple(
+    f"""CREATE TRIGGER reconciliations_no_{action.lower()} BEFORE {action} ON reconciliations
+    BEGIN SELECT RAISE(ABORT,'ledger_immutable'); END"""
+    for action in ("UPDATE", "DELETE")
+) + (
+    """CREATE TRIGGER reconciliations_guard BEFORE INSERT ON reconciliations BEGIN
+    SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM current_states WHERE
+        attempt_id=NEW.attempt_id AND state='uncertain')
+        THEN RAISE(ABORT,'ledger_invalid_transition') END;
+    END""",
+)
+_RECOVERY_EVENT_GUARD = _GUARDS[-1].replace(
+    "OR (c.state='result_saved' AND NEW.state='completed'",
+    """OR (c.state='uncertain' AND NEW.state='result_saved'
+        AND EXISTS(SELECT 1 FROM reconciliations r WHERE r.attempt_id=c.attempt_id
+            AND r.result_digest=NEW.result_digest))
+    OR (c.state='result_saved' AND NEW.state='completed'""",
+)
+_RECOVERY_SCHEMA = (
+    _TABLES + _GUARDS[:-1] + (_RECOVERY_EVENT_GUARD, _RECOVERY_TABLE) + _RECOVERY_GUARDS
+)
+
+
+_RETRY_TABLE = f"""CREATE TABLE dispatch_retries (
+    attempt_id TEXT PRIMARY KEY NOT NULL REFERENCES attempts(attempt_id),
+    uncertain_event_id INTEGER UNIQUE NOT NULL REFERENCES events(event_id),
+    receipt_digest TEXT NOT NULL CHECK({_sql_hex("receipt_digest")}),
+    evidence_digest TEXT NOT NULL CHECK({_sql_hex("evidence_digest")})
+)"""
+_RETRY_GUARDS = tuple(
+    f"""CREATE TRIGGER dispatch_retries_no_{action.lower()} BEFORE {action} ON dispatch_retries
+    BEGIN SELECT RAISE(ABORT,'ledger_immutable'); END"""
+    for action in ("UPDATE", "DELETE")
+) + (
+    """CREATE TRIGGER dispatch_retries_guard BEFORE INSERT ON dispatch_retries BEGIN
+    SELECT CASE WHEN EXISTS(SELECT 1 FROM dispatch_retries WHERE rowid=NEW.rowid OR attempt_id=NEW.attempt_id)
+        OR NOT EXISTS(SELECT 1 FROM current_states c WHERE c.attempt_id=NEW.attempt_id AND c.state='uncertain'
+            AND NEW.uncertain_event_id=(SELECT max(event_id) FROM events WHERE work_id=c.work_id))
+        THEN RAISE(ABORT,'ledger_invalid_transition') END;
+    END""",
+)
+_RETRY_EVENT_GUARD = _RECOVERY_EVENT_GUARD.replace(
+    "OR (c.state='result_saved' AND NEW.state='completed'",
+    """OR (c.state='uncertain' AND NEW.state='reserved'
+        AND EXISTS(SELECT 1 FROM dispatch_retries r WHERE r.attempt_id=c.attempt_id
+            AND r.uncertain_event_id=(SELECT max(event_id) FROM events WHERE work_id=c.work_id)))
+    OR (c.state='result_saved' AND NEW.state='completed'""",
+)
+_RETRY_SCHEMA = (
+    tuple(
+        _RETRY_EVENT_GUARD if statement == _RECOVERY_EVENT_GUARD else statement
+        for statement in _RECOVERY_SCHEMA
+    )
+    + (_RETRY_TABLE,)
+    + _RETRY_GUARDS
+)
 
 
 def _database_error(exc):
@@ -657,6 +719,121 @@ class Ledger:
     def start(self, attempt_id):
         self._transition(attempt_id, "reserved", "in_flight")
 
+    def reconciliations(self):
+        with self._transaction(write=False):
+            if self._connection.execute("PRAGMA user_version").fetchone()[0] == 1:
+                return []
+            return [
+                dict(row)
+                for row in self._connection.execute(
+                    "SELECT * FROM reconciliations ORDER BY attempt_id"
+                )
+            ]
+
+    def dispatch_retries(self):
+        with self._transaction(write=False):
+            if self._connection.execute("PRAGMA user_version").fetchone()[0] < 3:
+                return []
+            return [
+                dict(row)
+                for row in self._connection.execute(
+                    "SELECT * FROM dispatch_retries ORDER BY attempt_id"
+                )
+            ]
+
+    def authorize_unsent_retry(self, attempt_id, receipt_digest, evidence_digest):
+        _identifier(attempt_id, attempt=True)
+        _digest(receipt_digest)
+        _digest(evidence_digest)
+        with self._transaction():
+            db = self._connection
+            state = db.execute(
+                "SELECT * FROM current_states WHERE attempt_id=?", (attempt_id,)
+            ).fetchone()
+            if state is None or state["state"] != "uncertain":
+                raise LedgerError("ledger_invalid_transition")
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if (
+                version >= 3
+                and db.execute(
+                    "SELECT 1 FROM dispatch_retries WHERE attempt_id=?", (attempt_id,)
+                ).fetchone()
+            ):
+                raise LedgerError("retry_already_used")
+            if version == 1:
+                db.execute(_RECOVERY_TABLE)
+                for statement in _RECOVERY_GUARDS:
+                    db.execute(statement)
+            if version < 3:
+                db.execute(_RETRY_TABLE)
+                for statement in _RETRY_GUARDS:
+                    db.execute(statement)
+                db.execute("DROP TRIGGER events_guard")
+                db.execute(_RETRY_EVENT_GUARD)
+                db.execute("PRAGMA user_version=3")
+            event_id = db.execute(
+                "SELECT max(event_id) FROM events WHERE work_id=?", (state["work_id"],)
+            ).fetchone()[0]
+            db.execute(
+                "INSERT INTO dispatch_retries VALUES (?,?,?,?)",
+                (attempt_id, event_id, receipt_digest, evidence_digest),
+            )
+            db.execute(
+                "INSERT INTO events (work_id,state,attempt_id,request_digest) VALUES (?,?,?,?)",
+                (state["work_id"], "reserved", attempt_id, state["request_digest"]),
+            )
+            self._verify()
+            return 1
+
+    def reconcile_result(self, attempt_id, result_digest, receipt_digest):
+        """Explicit trusted-host reconciliation; retain the original uncertain event."""
+        _identifier(attempt_id, attempt=True)
+        _digest(result_digest)
+        _digest(receipt_digest)
+        with self._transaction():
+            db = self._connection
+            state = db.execute(
+                "SELECT * FROM current_states WHERE attempt_id=?", (attempt_id,)
+            ).fetchone()
+            if state is None:
+                raise LedgerError("ledger_invalid_transition")
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version >= 2:
+                existing = db.execute(
+                    "SELECT * FROM reconciliations WHERE attempt_id=?", (attempt_id,)
+                ).fetchone()
+                if existing is not None:
+                    if (
+                        existing["result_digest"] != result_digest
+                        or existing["receipt_digest"] != receipt_digest
+                    ):
+                        raise LedgerError("ledger_reconciliation_mismatch")
+                    return
+            if state["state"] != "uncertain":
+                raise LedgerError("ledger_invalid_transition")
+            if version == 1:
+                db.execute(_RECOVERY_TABLE)
+                for statement in _RECOVERY_GUARDS:
+                    db.execute(statement)
+                db.execute("DROP TRIGGER events_guard")
+                db.execute(_RECOVERY_EVENT_GUARD)
+                db.execute("PRAGMA user_version=2")
+            db.execute(
+                "INSERT INTO reconciliations VALUES (?,?,?)",
+                (attempt_id, receipt_digest, result_digest),
+            )
+            db.execute(
+                "INSERT INTO events (work_id,state,attempt_id,request_digest,result_digest) VALUES (?,?,?,?,?)",
+                (
+                    state["work_id"],
+                    "result_saved",
+                    attempt_id,
+                    state["request_digest"],
+                    result_digest,
+                ),
+            )
+            self._verify()
+
     def record_result(self, attempt_id, result_digest):
         _digest(result_digest)
         self._transition(
@@ -738,9 +915,16 @@ class Ledger:
         """Reject unknown schemas and inconsistent history before exposing data."""
         db = self._connection
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version != SCHEMA_VERSION:
+        if version not in (SCHEMA_VERSION, 2, 3):
             raise LedgerError("ledger_corrupt" if version == 0 else "ledger_version")
-        expected = {statement.split()[2]: statement.strip() for statement in _SCHEMA}
+        schema = (
+            _RETRY_SCHEMA
+            if version == 3
+            else _RECOVERY_SCHEMA
+            if version == 2
+            else _SCHEMA
+        )
+        expected = {statement.split()[2]: statement.strip() for statement in schema}
         actual = {
             row["name"]: row["sql"]
             for row in db.execute(
@@ -766,6 +950,7 @@ class Ledger:
             raise LedgerError("ledger_corrupt") from None
 
     def _verify_history(self, plan):
+        db = self._connection
         dependencies = {row["work_id"]: row["dependencies"] for row in plan}
         attempts = {}
         for row in self._connection.execute(
@@ -778,11 +963,25 @@ class Ledger:
             attempts[row["work_id"]] = (row["attempt_id"], row["request_digest"])
         latest = {}
         reserved = set()
+        recovery_rows = {}
+        if db.execute("PRAGMA user_version").fetchone()[0] >= 2:
+            recovery_rows = {
+                r["attempt_id"]: dict(r)
+                for r in db.execute("SELECT * FROM reconciliations")
+            }
+        retry_rows = {}
+        if db.execute("PRAGMA user_version").fetchone()[0] == 3:
+            retry_rows = {
+                r["attempt_id"]: dict(r)
+                for r in db.execute("SELECT * FROM dispatch_retries")
+            }
+        recovered = set()
+        retried = set()
         count = 0
         for row in self._connection.execute("SELECT * FROM events ORDER BY event_id"):
             count += 1
             work, state = row["work_id"], row["state"]
-            if count > 5 * len(plan) or work not in dependencies:
+            if count > 6 * len(plan) + 3 * len(retry_rows) or work not in dependencies:
                 raise LedgerError("ledger_corrupt")
             previous = latest.get(work)
             if previous is None:
@@ -790,11 +989,32 @@ class Ledger:
                     raise LedgerError("ledger_corrupt")
             elif state not in _MOVES.get(previous["state"], set()):
                 raise LedgerError("ledger_corrupt")
+            retry_transition = (
+                previous is not None
+                and previous["state"] == "uncertain"
+                and row["state"] == "reserved"
+            )
+            if retry_transition:
+                record = retry_rows.get(row["attempt_id"])
+                if (
+                    record is None
+                    or record["uncertain_event_id"] != previous["event_id"]
+                ):
+                    raise LedgerError("ledger_corrupt")
+                _digest(record["receipt_digest"])
+                _digest(record["evidence_digest"])
+                retried.add(row["attempt_id"])
+            elif previous is not None and previous["state"] == "uncertain":
+                record = recovery_rows.get(row["attempt_id"])
+                if record is None or record["result_digest"] != row["result_digest"]:
+                    raise LedgerError("ledger_corrupt")
+                _digest(record["receipt_digest"])
+                recovered.add(row["attempt_id"])
             if row["attempt_id"] is not None:
                 if attempts.get(work) != (row["attempt_id"], row["request_digest"]):
                     raise LedgerError("ledger_corrupt")
             if state == "reserved":
-                if work in reserved or any(
+                if (work in reserved and not retry_transition) or any(
                     latest.get(dep, {}).get("state") != "completed"
                     for dep in dependencies[work]
                 ):
@@ -805,5 +1025,9 @@ class Ledger:
             ):
                 raise LedgerError("ledger_corrupt")
             latest[work] = dict(row)
+        if retried != set(retry_rows):
+            raise LedgerError("ledger_corrupt")
+        if recovered != set(recovery_rows):
+            raise LedgerError("ledger_corrupt")
         if set(latest) != set(dependencies) or set(attempts) != reserved:
             raise LedgerError("ledger_corrupt")

@@ -53,6 +53,20 @@ def test_tracking_long_context_retains_usage_without_guessing_multiplier():
     assert estimate is None
 
 
+def test_cache_write_usage_keeps_tokens_but_does_not_guess_price():
+    usage = {
+        "input_tokens": 100,
+        "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 90},
+        "output_tokens": 20,
+        "total_tokens": 120,
+    }
+    measured, estimate = _usage(
+        {"usage": usage, "prompt_cache_retention": "24h"}, policy()
+    )
+    assert measured == usage
+    assert estimate is None
+
+
 def test_tracking_openai_context_is_not_inherited_from_legacy_models():
     assert policy().context_window_tokens is None
 
