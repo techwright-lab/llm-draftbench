@@ -226,6 +226,7 @@ def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
             transports=fixtures,
             mode="pointwise",
             reps=0,
+            judges=["jev"],
         )
     result = run(
         root,
@@ -234,6 +235,7 @@ def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
         transports=fixtures,
         mode="pointwise",
         reps=2,
+        judges=["jev"],
     )
     assert result["mode"] == "pointwise" and result["judges"] == ["jev"]
     assert result["planned_requests"] == 6 and result["complete"] is True
@@ -245,6 +247,7 @@ def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
             transports=fixtures,
             mode="pointwise",
             reps=2,
+            judges=["jev"],
         )["sent_this_invocation"]
         == 0
     )

@@ -10,7 +10,7 @@ from pathlib import Path
 from ..identity import canonical_bytes, strict_json_loads
 from ..workflow import _directory, _fsync
 from . import JudgeError
-from .criteria import CRITERIA
+from .criteria import BRIEF_CONTEXT, BRIEF_CRITERIA, CRITERIA
 
 PANEL_FORMAT = "draftbench-judge-panel-v1"
 JUDGE_KINDS = ("typesafe", "openai", "anthropic", "google")
@@ -33,7 +33,15 @@ def _text(value, limit=MAX_TEXT_BYTES):
 
 def build_panel(*, brief, candidates, judges):
     """Blind by content digest; candidate order follows the digest, not the model."""
-    brief = _text(brief)
+    return _build(_text(brief), candidates, judges, CRITERIA, pairwise=True)
+
+
+def build_brief_panel(*, briefs, judges):
+    """Each candidate is one writer input; it is scored alone, never paired."""
+    return _build(BRIEF_CONTEXT, briefs, judges, BRIEF_CRITERIA, pairwise=False)
+
+
+def _build(brief, candidates, judges, criteria, *, pairwise):
     if type(candidates) is not dict or not 2 <= len(candidates) <= MAX_CANDIDATES:
         raise JudgeError("invalid_candidates")
     blinded, custody = {}, {}
@@ -48,7 +56,7 @@ def build_panel(*, brief, candidates, judges):
         custody[candidate_id] = name
     ids = sorted(blinded)
     presentations = []
-    for first, second in combinations(ids, 2):
+    for first, second in combinations(ids, 2) if pairwise else ():
         for a, b in ((first, second), (second, first)):
             presentations.append(
                 {"presentation_id": f"{a}-{b}", "a": a, "b": b, "pair": [first, second]}
@@ -57,10 +65,12 @@ def build_panel(*, brief, candidates, judges):
         "format": PANEL_FORMAT,
         "brief": brief,
         "candidates": {cid: blinded[cid] for cid in ids},
-        "criteria": [dict(item) for item in CRITERIA],
+        "criteria": [dict(item) for item in criteria],
         "judges": _judges(judges),
         "presentations": presentations,
     }
+    if not pairwise:
+        panel["subject"] = "brief"
     panel["digest"] = _digest(panel)
     return panel, {
         "format": PANEL_FORMAT,
@@ -151,6 +161,27 @@ def load_pilot_run(run_dir, *, stage):
     return brief, candidates
 
 
+def load_corpus_briefs(cases_path, *, case_ids=None):
+    """The writer's user message per exported case, exactly as TrustGrowth rendered it."""
+    briefs = {}
+    try:
+        for line in Path(cases_path).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            case = strict_json_loads(line)
+            if case_ids is not None and case["case_id"] not in case_ids:
+                continue
+            messages = case["generator"]["writer"]["input"]["messages"]
+            briefs[case["case_id"]] = "".join(
+                m["content"] for m in messages if m["role"] == "user"
+            )
+    except Exception as exc:
+        raise JudgeError("unreadable_corpus") from exc
+    if case_ids is not None and set(briefs) != set(case_ids):
+        raise JudgeError("unknown_case")
+    return briefs
+
+
 def _read_json(path):
     return strict_json_loads(Path(path).read_text(encoding="utf-8"))
 
@@ -195,5 +226,11 @@ def summary(panel):
             {"judge_id": j["judge_id"], "kind": j["kind"], "model": j["model"]}
             for j in panel["judges"]
         ],
-        "planned_requests": len(panel["presentations"]) * len(panel["judges"]),
+        "subject": panel.get("subject", "draft"),
+        "planned_requests": (
+            len(panel["candidates"])
+            if panel.get("subject") == "brief"
+            else len(panel["presentations"])
+        )
+        * len(panel["judges"]),
     }

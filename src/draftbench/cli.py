@@ -245,6 +245,12 @@ def _parser() -> argparse.ArgumentParser:
     prep_judge.add_argument(
         "--stage", default="revision", choices=["writer", "revision"]
     )
+    prep_judge.add_argument(
+        "--corpus", help="Exported cases.jsonl: score each writer input as a brief"
+    )
+    prep_judge.add_argument(
+        "--case", action="append", help="Case id from --corpus; repeatable; default all"
+    )
     prep_judge.add_argument("--brief", help="Brief text file when not using --run")
     prep_judge.add_argument(
         "--candidate", action="append", help="NAME=PATH of a draft body; repeatable"
@@ -294,7 +300,18 @@ def _judge(args) -> int:
     try:
         if args.judge_command == "prepare":
             judges = json.loads(open(args.judges, encoding="utf-8").read())
-            if args.run is not None:
+            if args.corpus is not None:
+                if args.run or args.brief or args.candidate:
+                    raise JudgeError("invalid_arguments")
+                briefs = panel_module.load_corpus_briefs(
+                    args.corpus, case_ids=args.case
+                )
+                built, custody = panel_module.build_brief_panel(
+                    briefs=briefs, judges=judges
+                )
+            elif args.case:
+                raise JudgeError("invalid_arguments")
+            elif args.run is not None:
                 if args.brief or args.candidate:
                     raise JudgeError("invalid_arguments")
                 brief, candidates = panel_module.load_pilot_run(
@@ -310,9 +327,10 @@ def _judge(args) -> int:
                     if not sep:
                         raise JudgeError("invalid_arguments")
                     candidates[name] = open(path, encoding="utf-8").read()
-            built, custody = panel_module.build_panel(
-                brief=brief, candidates=candidates, judges=judges
-            )
+            if args.corpus is None:
+                built, custody = panel_module.build_panel(
+                    brief=brief, candidates=candidates, judges=judges
+                )
             panel_module.write_panel(args.output, built, custody)
             result = panel_module.summary(built)
         elif args.judge_command == "preflight":

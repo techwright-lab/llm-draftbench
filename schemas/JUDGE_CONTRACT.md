@@ -39,6 +39,20 @@ Every judge sees every presentation, including drafts from its own model
 family, so self-preference stays measurable. The family-blind views in the
 report then drop those verdicts (see Report).
 
+## Brief panels
+
+`judge prepare --corpus cases.jsonl [--case ID ...]` builds a brief panel: each
+candidate is one case's exported writer user message, exactly as TrustGrowth
+rendered it, blinded by digest like a draft. A brief panel has no pairs and
+runs only with `--mode pointwise`. Every judge scores four criteria from 0 to
+3: `brief_consistency` (the parts agree, including length and call to action),
+`brief_satisfiable` (every demand can be met from the supplied text, with no
+browsing or tools), `brief_latitude` (the writer still has real choices) and
+`brief_focus` (one thesis, audience and reader action). Generative judges must
+quote the text under review verbatim; a quote not found in it makes that
+score unknown. Pointwise mode now also runs generative judges on draft panels;
+pass `--judges` to limit it.
+
 ## Run and ledger
 
 `judge run` requires the exact panel digest and an explicit credential file with

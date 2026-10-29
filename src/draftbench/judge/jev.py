@@ -46,14 +46,12 @@ def native_score_request(judge, panel, candidate_id):
             "instructions": item["question"].replace("Which draft", "Does the draft"),
             "criteria": list(SCORE_LEVELS[item["criterion_id"]]),
         }
-    return {
-        "model": judge["model"],
-        "state": {
-            "brief": panel["brief"],
-            "draft": panel["candidates"][candidate_id]["body"],
-        },
-        "questions": questions,
-    }
+    body = panel["candidates"][candidate_id]["body"]
+    if panel.get("subject") == "brief":
+        state = {"writer_constraints": panel["brief"], "writer_input": body}
+    else:
+        state = {"brief": panel["brief"], "draft": body}
+    return {"model": judge["model"], "state": state, "questions": questions}
 
 
 def invoke(judge, panel, presentation, *, transport=None, api_key=None):

@@ -37,8 +37,8 @@ def run(
 ):
     """Live unless `transports` maps judge ids to fixture transports (tests only).
 
-    Pointwise mode scores each draft alone, so a position cannot bias the answer;
-    only typed judges support it. Keys are `pw:<candidate>:<rep>:<judge>`.
+    Pointwise mode scores each candidate alone, so a position cannot bias the
+    answer. Keys are `pw:<candidate>:<rep>:<judge>`. A brief panel is pointwise only.
     """
     root, panel = read_panel(panel_dir)
     if approve != panel["digest"]:
@@ -52,8 +52,9 @@ def run(
     selected = [j for j in panel["judges"] if judges is None or j["judge_id"] in judges]
     if judges is not None and len(selected) != len(set(judges)):
         raise JudgeError("unknown_judge")
+    if mode == "pairwise" and panel.get("subject") == "brief":
+        raise JudgeError("pointwise_only_panel")
     if mode == "pointwise":
-        selected = [j for j in selected if j["kind"] == "typesafe"]
         work = [
             {"presentation_id": f"pw:{cid}:{rep}", "candidate": cid, "rep": rep}
             for cid in sorted(panel["candidates"])
@@ -149,13 +150,21 @@ def _invoke(judge, panel, presentation, transports, credentials, mode):
     transport = None if transports is None else transports.get(judge["judge_id"])
     if transports is not None and transport is None:
         raise JudgeError("fixture_transport_required")
-    if mode == "pointwise":
+    if mode == "pointwise" and judge["kind"] == "typesafe":
         return jev.invoke_score(
             judge,
             panel,
             presentation["candidate"],
             transport=transport,
             api_key=credentials.get("DRAFTBENCH_TYPESAFE_API_KEY"),
+        )
+    if mode == "pointwise":
+        return generative.invoke_score(
+            judge,
+            panel,
+            presentation["candidate"],
+            transport=transport,
+            credentials=credentials,
         )
     if judge["kind"] == "typesafe":
         return jev.invoke(
