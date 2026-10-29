@@ -3,7 +3,7 @@
 import math
 import time
 
-from .criteria import CHOICE_DESCRIPTIONS, CHOICES
+from .criteria import CHOICE_DESCRIPTIONS, CHOICES, SCORE_LEVELS
 
 BASE_URL = "https://api.typesafe.ai"
 ENDPOINT = BASE_URL + "/v1/systemone"
@@ -37,8 +37,37 @@ def native_request(judge, panel, presentation):
     }
 
 
+def native_score_request(judge, panel, candidate_id):
+    """One request per draft; every criterion is an ordered score, no positions."""
+    questions = {}
+    for item in panel["criteria"]:
+        questions[item["criterion_id"]] = {
+            "type": "score",
+            "instructions": item["question"].replace("Which draft", "Does the draft"),
+            "criteria": list(SCORE_LEVELS[item["criterion_id"]]),
+        }
+    return {
+        "model": judge["model"],
+        "state": {
+            "brief": panel["brief"],
+            "draft": panel["candidates"][candidate_id]["body"],
+        },
+        "questions": questions,
+    }
+
+
 def invoke(judge, panel, presentation, *, transport=None, api_key=None):
     """Return a content-free result; the native body stays in the private ledger."""
+    request = native_request(judge, panel, presentation)
+    return _post(judge, request, _verdicts, transport=transport, api_key=api_key)
+
+
+def invoke_score(judge, panel, candidate_id, *, transport=None, api_key=None):
+    request = native_score_request(judge, panel, candidate_id)
+    return _post(judge, request, _scores, transport=transport, api_key=api_key)
+
+
+def _post(judge, request, parse, *, transport, api_key):
     import httpx
 
     if transport is not None and type(transport) is not httpx.MockTransport:
@@ -47,7 +76,6 @@ def invoke(judge, panel, presentation, *, transport=None, api_key=None):
         raise ValueError("live_authorization_required")
     if judge["model"] != MODEL:
         raise ValueError("unsupported_judge_model")
-    request = native_request(judge, panel, presentation)
     result = {
         "adapter": "typesafe",
         "provenance": "fixture" if transport is not None else "provider",
@@ -89,7 +117,7 @@ def invoke(judge, panel, presentation, *, transport=None, api_key=None):
         native = response.json()
         result["native_output"] = native
         result["served_model"] = native.get("model")
-        result["verdicts"] = _verdicts(native, request)
+        result["verdicts"] = parse(native, request)
         result["usage"] = _usage(native)
         result["estimated_usd"] = _estimate(result["usage"])
         result["status"] = "success"
@@ -149,6 +177,50 @@ def _verdicts(native, request):
             "evidence": None,
         }
     return verdicts
+
+
+def _scores(native, request):
+    answers = native.get("answers")
+    if type(native) is not dict or type(answers) is not dict:
+        raise ValueError("invalid_native_response")
+    if set(answers) != set(request["questions"]):
+        raise ValueError("invalid_native_response")
+    scores = {}
+    for criterion_id, answer in answers.items():
+        levels = len(request["questions"][criterion_id]["criteria"])
+        probabilities = answer.get("probabilities")
+        score = answer.get("score")
+        if (
+            type(answer) is not dict
+            or answer.get("type") != "score"
+            or type(score) not in (int, float)
+            or not math.isfinite(score)
+            or not 0 <= score <= levels - 1
+            or type(probabilities) is not dict
+            or set(probabilities) != {str(i) for i in range(levels)}
+        ):
+            raise ValueError("invalid_native_response")
+        values = {}
+        for key, value in probabilities.items():
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or not 0 <= value <= 1
+            ):
+                raise ValueError("invalid_native_response")
+            values[key] = float(value)
+        if abs(sum(values.values()) - 1.0) > 0.05:
+            raise ValueError("invalid_native_response")
+        confidence = answer.get("confidence")
+        if type(confidence) not in (int, float) or not 0 <= confidence <= 1:
+            raise ValueError("invalid_native_response")
+        scores[criterion_id] = {
+            "score": float(score),
+            "levels": levels,
+            "probabilities": values,
+            "confidence": float(confidence),
+        }
+    return scores
 
 
 def _usage(native):

@@ -32,13 +32,36 @@ def run(
     max_requests=None,
     transports=None,
     progress=None,
+    mode="pairwise",
+    reps=1,
 ):
-    """Live unless `transports` maps judge ids to fixture transports (tests only)."""
+    """Live unless `transports` maps judge ids to fixture transports (tests only).
+
+    Pointwise mode scores each draft alone, so a position cannot bias the answer;
+    only typed judges support it. Keys are `pw:<candidate>:<rep>:<judge>`.
+    """
     root, panel = read_panel(panel_dir)
     if approve != panel["digest"]:
         raise JudgeError("approval_mismatch")
+    if (
+        mode not in ("pairwise", "pointwise")
+        or type(reps) is not int
+        or not 1 <= reps <= 10
+    ):
+        raise JudgeError("invalid_mode")
     selected = [j for j in panel["judges"] if judges is None or j["judge_id"] in judges]
-    if not selected or (judges is not None and len(selected) != len(set(judges))):
+    if judges is not None and len(selected) != len(set(judges)):
+        raise JudgeError("unknown_judge")
+    if mode == "pointwise":
+        selected = [j for j in selected if j["kind"] == "typesafe"]
+        work = [
+            {"presentation_id": f"pw:{cid}:{rep}", "candidate": cid, "rep": rep}
+            for cid in sorted(panel["candidates"])
+            for rep in range(1, reps + 1)
+        ]
+    else:
+        work = panel["presentations"]
+    if not selected:
         raise JudgeError("unknown_judge")
     if transports is None:
         from ..adapters.sdk_logging import refuse_sdk_debug_logging
@@ -54,7 +77,7 @@ def run(
         sent = 0
         halted = None
         for judge in selected:
-            for presentation in panel["presentations"]:
+            for presentation in work:
                 key = f"{presentation['presentation_id']}:{judge['judge_id']}"
                 if key in done:
                     continue
@@ -70,7 +93,9 @@ def run(
                             "sent": sent,
                         }
                     )
-                result = _invoke(judge, panel, presentation, transports, credentials)
+                result = _invoke(
+                    judge, panel, presentation, transports, credentials, mode
+                )
                 sent += 1
                 record = {
                     "format": LEDGER_FORMAT,
@@ -99,15 +124,16 @@ def run(
                     break
             if halted:
                 break
-    planned = len(panel["presentations"]) * len(selected)
+    planned = len(work) * len(selected)
     completed = sum(
         1
         for j in selected
-        for p in panel["presentations"]
+        for p in work
         if f"{p['presentation_id']}:{j['judge_id']}" in done
     )
     return {
         "panel_digest": panel["digest"],
+        "mode": mode,
         "judges": [j["judge_id"] for j in selected],
         "planned_requests": planned,
         "completed_requests": completed,
@@ -119,10 +145,18 @@ def run(
     }
 
 
-def _invoke(judge, panel, presentation, transports, credentials):
+def _invoke(judge, panel, presentation, transports, credentials, mode):
     transport = None if transports is None else transports.get(judge["judge_id"])
     if transports is not None and transport is None:
         raise JudgeError("fixture_transport_required")
+    if mode == "pointwise":
+        return jev.invoke_score(
+            judge,
+            panel,
+            presentation["candidate"],
+            transport=transport,
+            api_key=credentials.get("DRAFTBENCH_TYPESAFE_API_KEY"),
+        )
     if judge["kind"] == "typesafe":
         return jev.invoke(
             judge,
