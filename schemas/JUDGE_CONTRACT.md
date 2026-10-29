@@ -35,8 +35,9 @@ Criteria: `brief_fidelity`, `evidence_discipline`, `clarity`, `insight`,
   quote one verbatim sentence from draft A or draft B. A quote found in neither
   draft turns that verdict into `unknown`; it is counted, never scored.
 
-Judge families are not excluded from judging their own family's drafts; the
-report shows inter-judge agreement so that bias can be read, not hidden.
+Every judge sees every presentation, including drafts from its own model
+family, so self-preference stays measurable. The family-blind views in the
+report then drop those verdicts (see Report).
 
 ## Run and ledger
 
@@ -57,6 +58,22 @@ consistency: pairs whose two orders named the same candidate versus the same
 position. Across judges: pairwise agreement rate per criterion. Usage totals
 and the Jev estimate are reported; billing is unreconciled. The report is private
 and names models through custody; the panel itself never does.
+
+Family-blind views need custody. A candidate's family comes from its model
+name (`gpt-` OpenAI, `claude-` Anthropic, `gemini-` Google). For each
+generative judge, `family_blind` repeats the per-criterion tally without any
+presentation that shows a draft from the judge's own family.
+`family_blind_consensus` pools those comparisons across the generative judges
+into one Bradley-Terry ranking per criterion, so no draft is ranked by a judge
+of its own family. Jev has no model family among the candidates and is not
+pooled. Cross-family pairs are then judged only by judges outside both
+families.
+
+`judge combine --panel A --panel B ... --output FILE` pools the family-blind
+comparisons of two or more panels (one per case) by model name into one
+ranking per criterion. It also keeps each case's own ranking and the Spearman
+rank agreement between every two cases, so a ranking that holds on one brief
+only is visible.
 
 ## Not established
 
