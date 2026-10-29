@@ -13,10 +13,11 @@ _KEYS = frozenset(
         "DRAFTBENCH_ANTHROPIC_API_KEY",
     }
 )
+JUDGE_KEYS = frozenset({*_KEYS, "DRAFTBENCH_TYPESAFE_API_KEY"})
 _TOKEN = re.compile(r"[A-Za-z0-9_.:/+@=-]{1,4096}\Z")
 
 
-def load_credentials(path):
+def load_credentials(path, keys=_KEYS):
     """Return only allowlisted literal tokens, never retain/echo parse diagnostics.
 
     Reject symlinks in every path component, non-owner files, hard links, anything
@@ -63,7 +64,7 @@ def load_credentials(path):
             key, sep, value = line.partition("=")
             if (
                 not sep
-                or key not in _KEYS
+                or key not in keys
                 or key in values
                 or not _TOKEN.fullmatch(value)
             ):
@@ -81,7 +82,7 @@ def load_credentials(path):
             ):
                 raise ValueError
             values[key] = value
-        if values.keys() != _KEYS:
+        if values.keys() != keys:
             raise ValueError
         if not re.fullmatch(
             r"org[-_][A-Za-z0-9_-]+", values["DRAFTBENCH_OPENAI_ORGANIZATION"]

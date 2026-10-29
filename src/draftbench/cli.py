@@ -232,7 +232,100 @@ def _parser() -> argparse.ArgumentParser:
             required=True,
             help="Exact reviewed preflight digest; not a credential",
         )
+    judge = commands.add_parser(
+        "judge", help="Blinded pairwise judging of saved drafts; preparation is offline"
+    )
+    judge_commands = judge.add_subparsers(dest="judge_command", required=True)
+    prep_judge = judge_commands.add_parser(
+        "prepare", help="Blind candidates into a panel; no credentials or network"
+    )
+    prep_judge.add_argument(
+        "--run", help="Pilot run directory holding plan.json and reports/"
+    )
+    prep_judge.add_argument(
+        "--stage", default="revision", choices=["writer", "revision"]
+    )
+    prep_judge.add_argument("--brief", help="Brief text file when not using --run")
+    prep_judge.add_argument(
+        "--candidate", action="append", help="NAME=PATH of a draft body; repeatable"
+    )
+    prep_judge.add_argument("--judges", required=True, help="JSON list of judges")
+    prep_judge.add_argument("--output", required=True)
+    check_judge = judge_commands.add_parser(
+        "preflight", help="Recompute the panel digest"
+    )
+    check_judge.add_argument("--panel", required=True)
+    run_judge = judge_commands.add_parser(
+        "run", help="LIVE: requires exact operator approval and explicit credentials"
+    )
+    run_judge.add_argument("--panel", required=True)
+    run_judge.add_argument("--env-file", required=True)
+    run_judge.add_argument("--approve", required=True, help="Exact panel digest")
+    run_judge.add_argument("--judges", help="Comma-separated judge ids; default all")
+    run_judge.add_argument("--max-requests", type=int)
+    run_judge.add_argument("--quiet-progress", action="store_true")
+    report_judge = judge_commands.add_parser(
+        "report", help="Rank from the saved ledger"
+    )
+    report_judge.add_argument("--panel", required=True)
+    report_judge.add_argument(
+        "--output", required=True, help="New JSON file; .md beside it"
+    )
     return parser
+
+
+def _judge(args) -> int:
+    from .judge import JudgeError, report, run
+    from .judge import panel as panel_module
+
+    try:
+        if args.judge_command == "prepare":
+            judges = json.loads(open(args.judges, encoding="utf-8").read())
+            if args.run is not None:
+                if args.brief or args.candidate:
+                    raise JudgeError("invalid_arguments")
+                brief, candidates = panel_module.load_pilot_run(
+                    args.run, stage=args.stage
+                )
+            else:
+                if not args.brief or not args.candidate:
+                    raise JudgeError("invalid_arguments")
+                brief = open(args.brief, encoding="utf-8").read()
+                candidates = {}
+                for item in args.candidate:
+                    name, sep, path = item.partition("=")
+                    if not sep:
+                        raise JudgeError("invalid_arguments")
+                    candidates[name] = open(path, encoding="utf-8").read()
+            built, custody = panel_module.build_panel(
+                brief=brief, candidates=candidates, judges=judges
+            )
+            panel_module.write_panel(args.output, built, custody)
+            result = panel_module.summary(built)
+        elif args.judge_command == "preflight":
+            result = run.preflight(args.panel)
+        elif args.judge_command == "run":
+            result = run.run(
+                args.panel,
+                env_file=args.env_file,
+                approve=args.approve,
+                judges=args.judges.split(",") if args.judges else None,
+                max_requests=args.max_requests,
+                progress=None if args.quiet_progress else run.terminal_progress(),
+            )
+        else:
+            custody = panel_module._read_json(
+                panel_module._directory(args.panel) / "custody.json"
+            )
+            result = report.write_report(args.panel, args.output, custody=custody)
+        print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
+        return 0 if result.get("complete", True) else 3
+    except JudgeError as exc:
+        print(json.dumps({"valid": False, "error": str(exc)}), file=sys.stderr)
+        return 2
+    except Exception:
+        print(json.dumps({"valid": False, "error": "judge_refused"}), file=sys.stderr)
+        return 2
 
 
 def _write_report(output: str, text: str) -> None:
@@ -302,6 +395,8 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps({"valid": False, "error": "pilot_refused"}), file=sys.stderr
             )
             return 2
+    if args.command == "judge":
+        return _judge(args)
     if args.command in ("openai", "anthropic"):
         return _provider(args)
     if args.command in ("report", "release"):

@@ -145,6 +145,27 @@ Preparation scores only completed saved writer/revision artifacts using an expli
 
 Reports contain private JSON, CSV, static script-disabled HTML, local evidence and checksums. Public exports require exact report/projection-bound approval, including approval of aggregate panels; raw evidence additionally requires explicit selection and redistributable component rights. No automatic majority/latest labels, human promotion, recursive copy, network or hosting. Approval is a declared operator attestation, not authenticated identity. See [report and release contracts](schemas/REPORTING_CONTRACT.md) for selection/approval examples and limitations.
 
+## Judge saved drafts pairwise
+
+`draftbench judge` ranks the saved drafts of one case against its frozen brief
+by blinded pairwise comparison, with Bradley-Terry strengths per criterion and
+inter-judge agreement. Preparation is offline:
+
+```sh
+uv sync --locked --extra judge
+uv run --offline draftbench judge prepare --run /path/to/pilot-run --stage revision \
+  --judges examples/judge/judges.example.json --output /path/to/new-panel
+uv run --offline draftbench judge preflight --panel /path/to/new-panel
+```
+
+Candidates are blinded by content digest; `custody.json` alone maps them back to
+models. `judge run --panel … --env-file … --approve EXACT_PANEL_DIGEST` sends
+each presentation to each judge (TypeSafe Jev typed choices, OpenAI and
+Anthropic strict-schema verdicts with verbatim evidence) and appends an
+immutable ledger; `judge report` ranks from that ledger. Judges are models, not
+editors: the report says `model_judged_not_human`. See
+[the judge contract](schemas/JUDGE_CONTRACT.md).
+
 ## Five-model offline provider support
 
 The exact GPT-6 Astra/Sol/Luna and Claude Opus 5.5/Sonnet 5 IDs have pinned
