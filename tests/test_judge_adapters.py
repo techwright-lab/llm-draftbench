@@ -244,6 +244,8 @@ def test_anthropic_judge_wire():
     assert calls[0].url == "https://api.anthropic.com/v1/messages"
     assert body["output_config"]["format"]["type"] == "json_schema"
     assert body["max_tokens"] == 4000 and body["thinking"] == {"type": "adaptive"}
+    assert calls[0].headers["x-api-key"] == "fixture-not-a-credential"
+    assert "authorization" not in calls[0].headers
     assert (
         result["status"] == "success"
         and result["verdicts"]["insight"]["choice"] == "tie"

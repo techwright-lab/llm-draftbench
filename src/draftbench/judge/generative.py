@@ -192,7 +192,7 @@ def _openai(request, http, fixture, credentials):
 
 
 def _anthropic(request, http, fixture, credentials):
-    from anthropic import Anthropic
+    from anthropic import Anthropic, omit
 
     with Anthropic(
         api_key="fixture-not-a-credential"
@@ -201,7 +201,7 @@ def _anthropic(request, http, fixture, credentials):
         auth_token="",
         base_url=anthropic_contract.BASE_URL,
         max_retries=0,
-        default_headers={"anthropic-version": "2023-06-01"},
+        default_headers={"anthropic-version": "2023-06-01", "Authorization": omit},
         timeout=TIMEOUT_SECONDS,
         http_client=http,
     ) as client:
