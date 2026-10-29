@@ -16,6 +16,18 @@ from .panel import read_panel
 REPORT_FORMAT = "draftbench-judge-report-v1"
 SMOOTHING = 0.5
 ITERATIONS = 500
+MODEL_FAMILIES = {
+    "openai": ("gpt-",),
+    "anthropic": ("claude-",),
+    "google": ("gemini-",),
+}
+
+
+def family_of(model):
+    for family, prefixes in MODEL_FAMILIES.items():
+        if type(model) is str and model.startswith(prefixes):
+            return family
+    return None
 
 
 def read_ledger(root):
@@ -61,11 +73,13 @@ def bradley_terry(ids, comparisons):
     return {i: round(math.log(v), 4) for i, v in strength.items()}
 
 
-def _tally(panel, records, judge_id, criterion_id):
-    ids = sorted(panel["candidates"])
+def _tally(panel, records, judge_id, criterion_id, *, exclude=frozenset()):
+    ids = sorted(set(panel["candidates"]) - exclude)
     comparisons, counts = [], {"a": 0, "b": 0, "tie": 0, "unknown": 0, "missing": 0}
     by_pair = {}
     for presentation in panel["presentations"]:
+        if presentation["a"] in exclude or presentation["b"] in exclude:
+            continue
         key = f"{presentation['presentation_id']}:{judge_id}"
         record = records.get(key)
         verdict = (
@@ -108,7 +122,31 @@ def _tally(panel, records, judge_id, criterion_id):
         "pairs_position_biased": position_biased,
         "strength": bradley_terry(ids, comparisons) if scored else None,
         "wins": _wins(ids, comparisons),
+        "comparisons": comparisons,
     }
+
+
+def _public(tally):
+    return {k: v for k, v in tally.items() if k != "comparisons"}
+
+
+def _consensus(panel, blind):
+    """Pool generative judges; a candidate is ranked only by other-family judges."""
+    ids = sorted(panel["candidates"])
+    out = {"judges": sorted(blind), "criteria": {}}
+    for item in panel["criteria"]:
+        criterion_id = item["criterion_id"]
+        comparisons = [
+            c
+            for tallies in blind.values()
+            for c in tallies[criterion_id]["comparisons"]
+        ]
+        out["criteria"][criterion_id] = {
+            "scored_presentations": round(sum(w for _, _, w in comparisons)),
+            "strength": bradley_terry(ids, comparisons) if comparisons else None,
+            "wins": _wins(ids, comparisons),
+        }
+    return out
 
 
 def _wins(ids, comparisons):
@@ -183,12 +221,28 @@ def build_report(panel_dir, *, custody=None):
     judges = panel["judges"]
     names = (custody or {}).get("candidates", {})
     results = {}
+    blind = {}
     for judge in judges:
         per_criterion = {}
         for item in panel["criteria"]:
-            per_criterion[item["criterion_id"]] = _tally(
-                panel, records, judge["judge_id"], item["criterion_id"]
+            per_criterion[item["criterion_id"]] = _public(
+                _tally(panel, records, judge["judge_id"], item["criterion_id"])
             )
+        if names and judge["kind"] in MODEL_FAMILIES:
+            blind[judge["judge_id"]] = {
+                item["criterion_id"]: _tally(
+                    panel,
+                    records,
+                    judge["judge_id"],
+                    item["criterion_id"],
+                    exclude=frozenset(
+                        cid
+                        for cid in panel["candidates"]
+                        if family_of(names.get(cid)) == judge["kind"]
+                    ),
+                )
+                for item in panel["criteria"]
+            }
         usage = {
             "input_tokens": 0,
             "output_tokens": 0,
@@ -220,6 +274,9 @@ def build_report(panel_dir, *, custody=None):
             "attempts": sum(1 for r in rows if r["judge_id"] == judge["judge_id"]),
             "usage": usage,
             "criteria": per_criterion,
+            "family_blind": {k: _public(v) for k, v in blind[judge["judge_id"]].items()}
+            if judge["judge_id"] in blind
+            else None,
         }
     agreement = {
         item["criterion_id"]: _agreement(panel, records, judges, item["criterion_id"])
@@ -241,6 +298,7 @@ def build_report(panel_dir, *, custody=None):
     return {
         "format": REPORT_FORMAT,
         "panel_digest": panel["digest"],
+        "family_blind_consensus": _consensus(panel, blind) if blind else None,
         "rank_agreement": rank_agreement,
         "candidates": {cid: names.get(cid) for cid in sorted(panel["candidates"])},
         "planned_requests": len(panel["presentations"]) * len(judges),
@@ -309,6 +367,24 @@ def render_markdown(report):
         lines += ["## Rank agreement (Spearman, pointwise vs pairwise)", ""]
         for key, value in report["rank_agreement"].items():
             lines.append(f"- {key}: {value}")
+        lines.append("")
+    consensus = report.get("family_blind_consensus")
+    if consensus:
+        criteria = list(consensus["criteria"])
+        lines += [
+            "## Family-blind consensus (no judge counts on its own model family)",
+            "",
+            "Judges pooled: " + ", ".join(consensus["judges"]),
+            "",
+            "| Candidate | " + " | ".join(criteria) + " |",
+            "|" + "---|" * (len(criteria) + 1),
+        ]
+        for cid in sorted(names):
+            cells = []
+            for criterion_id in criteria:
+                strength = consensus["criteria"][criterion_id]["strength"]
+                cells.append("n/a" if strength is None else f"{strength[cid]:+.2f}")
+            lines.append(f"| {names[cid] or cid} | " + " | ".join(cells) + " |")
         lines.append("")
     lines += ["## Judge agreement", ""]
     for criterion_id, pairs in report["agreement"].items():

@@ -2,12 +2,17 @@ import json
 
 import pytest
 from test_judge_adapters import jev_native, verdict_json
-from test_judge_panel import BRIEF, CANDIDATES, JUDGES
+from test_judge_panel import BRIEF, CANDIDATES, GOOGLE, JUDGES
 
 from draftbench.cli import main
 from draftbench.judge import JudgeError
 from draftbench.judge.panel import build_panel, write_panel
-from draftbench.judge.report import bradley_terry, build_report, read_ledger
+from draftbench.judge.report import (
+    bradley_terry,
+    build_report,
+    read_ledger,
+    render_markdown,
+)
 from draftbench.judge.run import preflight, run
 
 pytest.importorskip("httpx")
@@ -258,3 +263,58 @@ def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
     assert report["judges"]["oa"]["pointwise"] is None
     assert "jev:pointwise|jev:pairwise|clarity" in report["rank_agreement"]
     assert report["judges"]["jev"]["criteria"]["clarity"]["counts"]["a"] == 6
+
+
+def test_family_blind_drops_own_family_verdicts_and_pools_the_rest(tmp_path):
+    candidates = {
+        "gpt-6.1-sol": "Sol body. One sentence.",
+        "claude-opus-5-5": "Opus body. Another sentence.",
+        "claude-haiku-5-5": "Haiku body. Third sentence.",
+    }
+    panel, custody = build_panel(
+        brief=BRIEF, candidates=candidates, judges=JUDGES + [GOOGLE]
+    )
+    root = write_panel(tmp_path / "panel", panel, custody)
+    by_name = {name: cid for cid, name in custody["candidates"].items()}
+    sol = by_name["gpt-6.1-sol"]
+    rows = []
+    for p in panel["presentations"]:
+        for judge in ("jev", "oa", "an", "go"):
+            choice = "a" if sol not in (p["a"], p["b"]) or p["a"] == sol else "b"
+            rows.append(
+                {
+                    "key": f"{p['presentation_id']}:{judge}",
+                    "judge_id": judge,
+                    "status": "success",
+                    "verdicts": {
+                        c["criterion_id"]: {"choice": choice} for c in panel["criteria"]
+                    },
+                }
+            )
+    (root / "ledger.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
+    )
+
+    report = build_report(root, custody=custody)
+    oa = report["judges"]["oa"]["family_blind"]["clarity"]
+    assert sol not in oa["strength"] and oa["scored_presentations"] == 2
+    an = report["judges"]["an"]["family_blind"]["clarity"]
+    assert an["strength"] is None and an["counts"]["missing"] == 0
+    assert (
+        report["judges"]["go"]["family_blind"]["clarity"]["scored_presentations"] == 6
+    )
+    assert report["judges"]["jev"]["family_blind"] is None
+
+    consensus = report["family_blind_consensus"]
+    assert consensus["judges"] == ["an", "go", "oa"]
+    clarity = consensus["criteria"]["clarity"]
+    assert clarity["scored_presentations"] == 8
+    assert max(clarity["strength"], key=clarity["strength"].get) == sol
+    assert "Family-blind consensus" in render_markdown(report)
+
+
+def test_family_blind_needs_custody(tmp_path):
+    root, panel, _ = make_panel(tmp_path)
+    report = build_report(root)
+    assert report["family_blind_consensus"] is None
+    assert all(j["family_blind"] is None for j in report["judges"].values())
