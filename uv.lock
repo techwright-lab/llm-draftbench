@@ -531,6 +531,11 @@ anthropic = [
 inspect = [
     { name = "inspect-ai" },
 ]
+judge = [
+    { name = "anthropic" },
+    { name = "httpx" },
+    { name = "openai" },
+]
 openai = [
     { name = "httpx" },
     { name = "openai" },
@@ -553,18 +558,21 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = "==0.84.0" },
+    { name = "anthropic", marker = "extra == 'judge'", specifier = "==0.84.0" },
     { name = "anthropic", marker = "extra == 'pilot'", specifier = "==0.84.0" },
     { name = "httpx", marker = "extra == 'anthropic'", specifier = "==0.28.1" },
+    { name = "httpx", marker = "extra == 'judge'", specifier = "==0.28.1" },
     { name = "httpx", marker = "extra == 'openai'", specifier = "==0.28.1" },
     { name = "httpx", marker = "extra == 'pilot'", specifier = "==0.28.1" },
     { name = "inspect-ai", marker = "extra == 'inspect'", specifier = "==0.3.223" },
     { name = "jsonschema", marker = "extra == 'pilot'", specifier = ">=4.23,<5" },
+    { name = "openai", marker = "extra == 'judge'", specifier = "==2.29.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = "==2.29.0" },
     { name = "openai", marker = "extra == 'pilot'", specifier = "==2.29.0" },
     { name = "packaging", marker = "extra == 'pilot'", specifier = ">=24.2,<27" },
     { name = "pydantic", specifier = ">=2.11,<3" },
 ]
-provides-extras = ["inspect", "openai", "anthropic", "pilot"]
+provides-extras = ["inspect", "openai", "anthropic", "pilot", "judge"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -247,3 +247,29 @@ def test_invalid_cli_arguments_do_not_echo_private_tokens(capsys):
         main(["PRIVATE-ARGUMENT"])
     assert result.value.code == 2
     assert "PRIVATE-ARGUMENT" not in capsys.readouterr().err
+
+
+def test_judge_credentials_require_all_five_names(tmp_path):
+    from draftbench.credentials import JUDGE_KEYS, load_credentials
+
+    path = tmp_path / "judge.env"
+    lines = [
+        "DRAFTBENCH_OPENAI_API_KEY=sk-live-token",
+        "DRAFTBENCH_OPENAI_ORGANIZATION=org_lab",
+        "DRAFTBENCH_OPENAI_PROJECT=proj_lab",
+        "DRAFTBENCH_ANTHROPIC_API_KEY=sk-ant-token",
+    ]
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o600)
+    with pytest.raises(ValueError, match="invalid_explicit_credentials"):
+        load_credentials(path, JUDGE_KEYS)
+    assert set(load_credentials(path)) == set(lines[0].split("=")[0] for _ in [0]) | {
+        "DRAFTBENCH_OPENAI_ORGANIZATION",
+        "DRAFTBENCH_OPENAI_PROJECT",
+        "DRAFTBENCH_ANTHROPIC_API_KEY",
+    }
+    path.write_text("\n".join(lines + ["DRAFTBENCH_TYPESAFE_API_KEY=ts-token"]) + "\n")
+    values = load_credentials(path, JUDGE_KEYS)
+    assert values["DRAFTBENCH_TYPESAFE_API_KEY"] == "ts-token"
+    with pytest.raises(ValueError, match="invalid_explicit_credentials"):
+        load_credentials(path)
