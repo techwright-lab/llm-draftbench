@@ -8,12 +8,20 @@ import re
 import time
 
 from ..adapters import anthropic_contract, openai_contract
-from .criteria import CHOICES, JUDGE_MANDATE
+from .criteria import (
+    BRIEF_MANDATE,
+    CHOICES,
+    JUDGE_MANDATE,
+    SCORE_LEVELS,
+    SCORE_MANDATE,
+)
 
 GOOGLE_SDK_VERSION = "2.30.1"
 GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/"
 TIMEOUT_SECONDS = 300.0
 SCHEMA_NAME = "PairwiseVerdictSchema"
+SCORE_SCHEMA_NAME = "PointwiseScoreSchema"
+LEVELS = ("0", "1", "2", "3")
 _SPACE = re.compile(r"\s+")
 
 
@@ -41,6 +49,64 @@ def wire_schema(criterion_ids):
     }
 
 
+def score_schema(criterion_ids):
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["scores"],
+        "properties": {
+            "scores": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["criterion", "level", "evidence", "reason"],
+                    "properties": {
+                        "criterion": {"type": "string", "enum": list(criterion_ids)},
+                        "level": {"type": "string", "enum": list(LEVELS)},
+                        "evidence": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+
+
+def score_message(panel, candidate_id):
+    criteria = "\n".join(
+        f"- {item['criterion_id']}: {item['question']}\n"
+        + "\n".join(
+            f"  {level}: {text}"
+            for level, text in enumerate(SCORE_LEVELS[item["criterion_id"]])
+        )
+        for item in panel["criteria"]
+    )
+    body = panel["candidates"][candidate_id]["body"]
+    if panel.get("subject") == "brief":
+        head = "## Writer constraints\n\n" + panel["brief"]
+        head += "\n\n## Text under review\n\n" + body
+    else:
+        head = "## The brief\n\n" + panel["brief"] + "\n\n## The draft\n\n" + body
+    return (
+        head
+        + "\n\n## Criteria\n\n"
+        + criteria
+        + "\n\nAnswer every criterion above and only those."
+    )
+
+
+def native_score_request(judge, panel, candidate_id):
+    mandate = BRIEF_MANDATE if panel.get("subject") == "brief" else SCORE_MANDATE
+    return _native(
+        judge,
+        mandate,
+        score_message(panel, candidate_id),
+        score_schema([item["criterion_id"] for item in panel["criteria"]]),
+        SCORE_SCHEMA_NAME,
+    )
+
+
 def user_message(panel, presentation):
     a, b = (
         panel["candidates"][presentation["a"]],
@@ -63,14 +129,22 @@ def user_message(panel, presentation):
 
 
 def native_request(judge, panel, presentation):
-    schema = wire_schema([item["criterion_id"] for item in panel["criteria"]])
-    user = user_message(panel, presentation)
+    return _native(
+        judge,
+        JUDGE_MANDATE,
+        user_message(panel, presentation),
+        wire_schema([item["criterion_id"] for item in panel["criteria"]]),
+        SCHEMA_NAME,
+    )
+
+
+def _native(judge, mandate, user, schema, schema_name):
     if judge["kind"] == "google":
         return {
             "model": judge["model"],
             "contents": [{"role": "user", "parts": [{"text": user}]}],
             "config": {
-                "system_instruction": JUDGE_MANDATE,
+                "system_instruction": mandate,
                 "response_mime_type": "application/json",
                 "response_json_schema": schema,
                 "max_output_tokens": judge["max_output_tokens"],
@@ -80,12 +154,12 @@ def native_request(judge, panel, presentation):
     if judge["kind"] == "openai":
         return {
             "model": judge["model"],
-            "instructions": JUDGE_MANDATE,
+            "instructions": mandate,
             "input": [{"role": "user", "content": user}],
             "text": {
                 "format": {
                     "type": "json_schema",
-                    "name": SCHEMA_NAME,
+                    "name": schema_name,
                     "schema": schema,
                     "strict": True,
                 }
@@ -98,7 +172,7 @@ def native_request(judge, panel, presentation):
         }
     return {
         "model": judge["model"],
-        "system": [{"type": "text", "text": JUDGE_MANDATE}],
+        "system": [{"type": "text", "text": mandate}],
         "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
         "max_tokens": judge["max_tokens"],
         "thinking": {"type": "adaptive"},
@@ -113,13 +187,32 @@ def native_request(judge, panel, presentation):
 
 
 def invoke(judge, panel, presentation, *, transport=None, credentials=None):
+    return _invoke(
+        judge,
+        native_request(judge, panel, presentation),
+        lambda text: _verdicts(text, panel, presentation),
+        transport=transport,
+        credentials=credentials,
+    )
+
+
+def invoke_score(judge, panel, candidate_id, *, transport=None, credentials=None):
+    return _invoke(
+        judge,
+        native_score_request(judge, panel, candidate_id),
+        lambda text: _scores(text, panel, candidate_id),
+        transport=transport,
+        credentials=credentials,
+    )
+
+
+def _invoke(judge, request, parse, *, transport, credentials):
     import httpx
 
     if transport is not None and type(transport) is not httpx.MockTransport:
         raise ValueError("fixture_transport_required")
     fixture = transport is not None
     credentials = credentials or {}
-    request = native_request(judge, panel, presentation)
     result = {
         "adapter": judge["kind"],
         "provenance": "fixture" if fixture else "provider",
@@ -156,7 +249,7 @@ def invoke(judge, panel, presentation, *, transport=None, credentials=None):
             else None
         )
         result["usage"] = _usage(native, judge["kind"])
-        result["verdicts"] = _verdicts(text, panel, presentation)
+        result["verdicts"] = parse(text)
         result["status"] = "success"
     except _AuthRejected:
         result["error_code"] = "auth_rejected"
@@ -379,6 +472,40 @@ def _verdicts(text, panel, presentation):
     if set(verdicts) != set(expected):
         raise ValueError("invalid_native_response")
     return verdicts
+
+
+def _scores(text, panel, candidate_id):
+    from ..identity import strict_json_loads
+
+    parsed = strict_json_loads(text)
+    rows = parsed.get("scores") if type(parsed) is dict else None
+    if type(rows) is not list:
+        raise ValueError("invalid_native_response")
+    expected = [item["criterion_id"] for item in panel["criteria"]]
+    body = _normal(panel["candidates"][candidate_id]["body"])
+    scores = {}
+    for row in rows:
+        if (
+            type(row) is not dict
+            or row.get("criterion") not in expected
+            or row["criterion"] in scores
+            or row.get("level") not in LEVELS
+            or type(row.get("evidence")) is not str
+            or type(row.get("reason")) is not str
+        ):
+            raise ValueError("invalid_native_response")
+        quote = _normal(row["evidence"])
+        found = bool(quote) and quote in body
+        scores[row["criterion"]] = {
+            "score": float(row["level"]) if found else None,
+            "levels": len(LEVELS),
+            "evidence": row["evidence"],
+            "evidence_found": found,
+            "reason": row["reason"],
+        }
+    if set(scores) != set(expected):
+        raise ValueError("invalid_native_response")
+    return scores
 
 
 def _normal(value):

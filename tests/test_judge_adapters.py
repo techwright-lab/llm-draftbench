@@ -269,7 +269,7 @@ def test_generative_auth_rejection_is_flagged():
     assert result["error_code"] == "auth_rejected"
 
 
-def jev_score_native(level=2):
+def jev_score_native(level=2, criterion_ids=CRITERION_IDS):
     probs = {"0": 0.05, "1": 0.05, "2": 0.05, "3": 0.05}
     probs[str(level)] = 0.85
     return {
@@ -282,7 +282,7 @@ def jev_score_native(level=2):
                 "legend": {},
                 "probabilities": probs,
             }
-            for cid in CRITERION_IDS
+            for cid in criterion_ids
         },
         "usage": {"input_tokens": 900, "output_tokens": 0},
     }

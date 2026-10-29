@@ -219,11 +219,12 @@ def _pointwise(panel, records, judge_id):
     for item in panel["criteria"]:
         cid_scores = {}
         for cid in sorted(panel["candidates"]):
-            scores = [
+            answers = [
                 r["verdicts"][item["criterion_id"]]["score"]
                 for key, r in records.items()
                 if key.startswith(f"pw:{cid}:") and key.endswith(f":{judge_id}")
             ]
+            scores = [score for score in answers if score is not None]
             if scores:
                 cid_scores[cid] = {
                     "mean": round(sum(scores) / len(scores), 3),
@@ -231,6 +232,10 @@ def _pointwise(panel, records, judge_id):
                     "max": max(scores),
                     "reps": len(scores),
                 }
+                if len(scores) < len(answers):
+                    cid_scores[cid]["unknown"] = len(answers) - len(scores)
+            elif answers:
+                cid_scores[cid] = {"unknown": len(answers)}
         out[item["criterion_id"]] = cid_scores
     return out
 
@@ -293,7 +298,7 @@ def build_report(panel_dir, *, custody=None):
         if not judge["pointwise"]:
             continue
         for criterion_id, scores in judge["pointwise"].items():
-            means = {cid: v["mean"] for cid, v in scores.items()}
+            means = {cid: v["mean"] for cid, v in scores.items() if "mean" in v}
             for other_id, other in results.items():
                 strength = other["criteria"][criterion_id]["strength"]
                 if strength is None:
@@ -304,6 +309,7 @@ def build_report(panel_dir, *, custody=None):
     return {
         "format": REPORT_FORMAT,
         "panel_digest": panel["digest"],
+        "subject": panel.get("subject", "draft"),
         "family_blind_consensus": _consensus(panel, blind) if blind else None,
         "rank_agreement": rank_agreement,
         "candidates": {cid: names.get(cid) for cid in sorted(panel["candidates"])},
@@ -427,13 +433,16 @@ def _create(path, text):
 
 def render_markdown(report):
     lines = [
-        "# Pairwise judge report",
+        "# Brief judge report"
+        if report["subject"] == "brief"
+        else "# Pairwise judge report",
         "",
         f"Panel `{report['panel_digest'][:12]}` · requests {report['completed_requests']}/{report['planned_requests']} · model judgments, not human review.",
         "",
     ]
     names = report["candidates"]
-    for judge_id, judge in report["judges"].items():
+    pairwise = report["judges"] if report["subject"] == "draft" else {}
+    for judge_id, judge in pairwise.items():
         lines += [f"## {judge_id} ({judge['kind']} · {judge['model']})", ""]
         usage = judge["usage"]
         lines.append(
@@ -471,11 +480,12 @@ def render_markdown(report):
             cells = []
             for criterion_id in criteria:
                 v = judge["pointwise"][criterion_id].get(cid)
-                cells.append(
-                    "n/a"
-                    if v is None
-                    else f"{v['mean']:.2f} ({v['min']:.1f}-{v['max']:.1f})"
-                )
+                if v is None:
+                    cells.append("n/a")
+                elif "mean" not in v:
+                    cells.append("unknown")
+                else:
+                    cells.append(f"{v['mean']:.2f} ({v['min']:.1f}-{v['max']:.1f})")
             lines.append(f"| {names[cid] or cid} | " + " | ".join(cells) + " |")
         lines.append("")
     if report["rank_agreement"]:
