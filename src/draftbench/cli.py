@@ -263,6 +263,12 @@ def _parser() -> argparse.ArgumentParser:
     run_judge.add_argument("--approve", required=True, help="Exact panel digest")
     run_judge.add_argument("--judges", help="Comma-separated judge ids; default all")
     run_judge.add_argument("--max-requests", type=int)
+    run_judge.add_argument(
+        "--mode", default="pairwise", choices=["pairwise", "pointwise"]
+    )
+    run_judge.add_argument(
+        "--reps", type=int, default=1, help="Pointwise repeats per draft"
+    )
     run_judge.add_argument("--quiet-progress", action="store_true")
     report_judge = judge_commands.add_parser(
         "report", help="Rank from the saved ledger"
@@ -312,6 +318,8 @@ def _judge(args) -> int:
                 judges=args.judges.split(",") if args.judges else None,
                 max_requests=args.max_requests,
                 progress=None if args.quiet_progress else run.terminal_progress(),
+                mode=args.mode,
+                reps=args.reps,
             )
         else:
             custody = panel_module._read_json(
