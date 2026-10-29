@@ -267,3 +267,69 @@ def test_generative_auth_rejection_is_flagged():
         ),
     )
     assert result["error_code"] == "auth_rejected"
+
+
+def jev_score_native(level=2):
+    probs = {"0": 0.05, "1": 0.05, "2": 0.05, "3": 0.05}
+    probs[str(level)] = 0.85
+    return {
+        "model": "jev-1.14.0",
+        "answers": {
+            cid: {
+                "type": "score",
+                "score": float(level),
+                "confidence": 0.8,
+                "legend": {},
+                "probabilities": probs,
+            }
+            for cid in CRITERION_IDS
+        },
+        "usage": {"input_tokens": 900, "output_tokens": 0},
+    }
+
+
+def test_jev_pointwise_wire_and_parse():
+    import httpx
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=jev_score_native(3))
+
+    p = panel()
+    cid = sorted(p["candidates"])[0]
+    result = jev.invoke_score(
+        p["judges"][0], p, cid, transport=httpx.MockTransport(handler)
+    )
+    body = json.loads(calls[0].content)
+    assert set(body["state"]) == {"brief", "draft"}
+    assert body["state"]["draft"] == p["candidates"][cid]["body"]
+    assert body["questions"]["clarity"]["type"] == "score"
+    assert len(body["questions"]["clarity"]["criteria"]) == 4
+    assert body["questions"]["clarity"]["instructions"].startswith("Does the draft")
+    assert result["status"] == "success"
+    assert result["verdicts"]["clarity"] == {
+        "score": 3.0,
+        "levels": 4,
+        "probabilities": {"0": 0.05, "1": 0.05, "2": 0.05, "3": 0.85},
+        "confidence": 0.8,
+    }
+
+
+def test_jev_pointwise_rejects_out_of_range_score():
+    import httpx
+
+    native = jev_score_native(2)
+    native["answers"]["clarity"]["score"] = 7
+    p = panel()
+    result = jev.invoke_score(
+        p["judges"][0],
+        p,
+        sorted(p["candidates"])[0],
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=native)),
+    )
+    assert (
+        result["status"] == "uncertain"
+        and result["error_code"] == "invalid_native_response"
+    )

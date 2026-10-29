@@ -193,3 +193,68 @@ def test_cli_run_refuses_without_valid_credentials(tmp_path, capsys):
     )
     assert json.loads(capsys.readouterr().err)["error"] == "judge_refused"
     assert not (root / "ledger.jsonl").exists()
+
+
+def test_pointwise_run_scores_each_draft_and_reports_rank_agreement(tmp_path):
+    import httpx
+    from test_judge_adapters import jev_score_native
+
+    root, panel, custody = make_panel(tmp_path)
+    ids = sorted(panel["candidates"])
+    level_by_draft = {
+        panel["candidates"][cid]["body"]: level for cid, level in zip(ids, (3, 1, 2))
+    }
+
+    def handler(request):
+        body = json.loads(request.content)
+        assert set(body["state"]) == {"brief", "draft"}
+        return httpx.Response(
+            200, json=jev_score_native(level_by_draft[body["state"]["draft"]])
+        )
+
+    fixtures = {"jev": httpx.MockTransport(handler)}
+    with pytest.raises(JudgeError, match="invalid_mode"):
+        run(
+            root,
+            env_file=None,
+            approve=panel["digest"],
+            transports=fixtures,
+            mode="pointwise",
+            reps=0,
+        )
+    result = run(
+        root,
+        env_file=None,
+        approve=panel["digest"],
+        transports=fixtures,
+        mode="pointwise",
+        reps=2,
+    )
+    assert result["mode"] == "pointwise" and result["judges"] == ["jev"]
+    assert result["planned_requests"] == 6 and result["complete"] is True
+    assert (
+        run(
+            root,
+            env_file=None,
+            approve=panel["digest"],
+            transports=fixtures,
+            mode="pointwise",
+            reps=2,
+        )["sent_this_invocation"]
+        == 0
+    )
+
+    run(
+        root,
+        env_file=None,
+        approve=panel["digest"],
+        transports=transports(panel),
+        judges=["jev"],
+    )
+    report = build_report(root, custody=custody)
+    pointwise = report["judges"]["jev"]["pointwise"]["clarity"]
+    assert pointwise[ids[0]] == {"mean": 3.0, "min": 3.0, "max": 3.0, "reps": 2}
+    assert pointwise[ids[1]]["mean"] == 1.0
+    assert report["judges"]["oa"]["pointwise"] is None
+    assert "jev:pointwise|jev:pairwise|clarity" in report["rank_agreement"]
+    assert report["judges"]["jev"]["criteria"]["clarity"]["counts"]["a"] == 6

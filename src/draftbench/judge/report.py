@@ -139,6 +139,43 @@ def _agreement(panel, records, judges, criterion_id):
     return out
 
 
+def spearman(ranking_a, ranking_b):
+    """Rank correlation over the candidates present in both maps (higher is better)."""
+    ids = sorted(set(ranking_a) & set(ranking_b))
+    if len(ids) < 3:
+        return None
+
+    def ranks(values):
+        order = sorted(ids, key=lambda i: -values[i])
+        return {i: order.index(i) + 1 for i in ids}
+
+    ra, rb = ranks(ranking_a), ranks(ranking_b)
+    n = len(ids)
+    d2 = sum((ra[i] - rb[i]) ** 2 for i in ids)
+    return round(1 - 6 * d2 / (n * (n * n - 1)), 3)
+
+
+def _pointwise(panel, records, judge_id):
+    out = {}
+    for item in panel["criteria"]:
+        cid_scores = {}
+        for cid in sorted(panel["candidates"]):
+            scores = [
+                r["verdicts"][item["criterion_id"]]["score"]
+                for key, r in records.items()
+                if key.startswith(f"pw:{cid}:") and key.endswith(f":{judge_id}")
+            ]
+            if scores:
+                cid_scores[cid] = {
+                    "mean": round(sum(scores) / len(scores), 3),
+                    "min": min(scores),
+                    "max": max(scores),
+                    "reps": len(scores),
+                }
+        out[item["criterion_id"]] = cid_scores
+    return out
+
+
 def build_report(panel_dir, *, custody=None):
     root, panel = read_panel(panel_dir)
     records = latest_success(read_ledger(root))
@@ -172,9 +209,11 @@ def build_report(panel_dir, *, custody=None):
 
                 total = (total or Decimal(0)) + Decimal(record["estimated_usd"])
         usage["estimated_usd"] = str(total) if total is not None else None
+        pointwise = _pointwise(panel, records, judge["judge_id"])
         results[judge["judge_id"]] = {
             "kind": judge["kind"],
             "model": judge["model"],
+            "pointwise": pointwise if any(pointwise.values()) else None,
             "completed_requests": sum(
                 1 for r in records.values() if r["judge_id"] == judge["judge_id"]
             ),
@@ -186,9 +225,23 @@ def build_report(panel_dir, *, custody=None):
         item["criterion_id"]: _agreement(panel, records, judges, item["criterion_id"])
         for item in panel["criteria"]
     }
+    rank_agreement = {}
+    for judge_id, judge in results.items():
+        if not judge["pointwise"]:
+            continue
+        for criterion_id, scores in judge["pointwise"].items():
+            means = {cid: v["mean"] for cid, v in scores.items()}
+            for other_id, other in results.items():
+                strength = other["criteria"][criterion_id]["strength"]
+                if strength is None:
+                    continue
+                rank_agreement[
+                    f"{judge_id}:pointwise|{other_id}:pairwise|{criterion_id}"
+                ] = spearman(means, strength)
     return {
         "format": REPORT_FORMAT,
         "panel_digest": panel["digest"],
+        "rank_agreement": rank_agreement,
         "candidates": {cid: names.get(cid) for cid in sorted(panel["candidates"])},
         "planned_requests": len(panel["presentations"]) * len(judges),
         "completed_requests": len(records),
@@ -228,6 +281,34 @@ def render_markdown(report):
             lines.append(
                 f"- {criterion_id}: a={c['a']} b={c['b']} tie={c['tie']} unknown={c['unknown']} missing={c['missing']}; pairs consistent {tally['pairs_consistent']}/{tally['pairs_with_both_orders']}, position-biased {tally['pairs_position_biased']}"
             )
+        lines.append("")
+    for judge_id, judge in report["judges"].items():
+        if not judge["pointwise"]:
+            continue
+        lines += [
+            f"## {judge_id} pointwise scores (mean over repeats; level 0 to 3)",
+            "",
+        ]
+        criteria = list(judge["pointwise"])
+        lines += [
+            "| Candidate | " + " | ".join(criteria) + " |",
+            "|" + "---|" * (len(criteria) + 1),
+        ]
+        for cid in sorted(names):
+            cells = []
+            for criterion_id in criteria:
+                v = judge["pointwise"][criterion_id].get(cid)
+                cells.append(
+                    "n/a"
+                    if v is None
+                    else f"{v['mean']:.2f} ({v['min']:.1f}-{v['max']:.1f})"
+                )
+            lines.append(f"| {names[cid] or cid} | " + " | ".join(cells) + " |")
+        lines.append("")
+    if report["rank_agreement"]:
+        lines += ["## Rank agreement (Spearman, pointwise vs pairwise)", ""]
+        for key, value in report["rank_agreement"].items():
+            lines.append(f"- {key}: {value}")
         lines.append("")
     lines += ["## Judge agreement", ""]
     for criterion_id, pairs in report["agreement"].items():
