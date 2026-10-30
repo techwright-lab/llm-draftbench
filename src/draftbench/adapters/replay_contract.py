@@ -9,7 +9,7 @@ import re
 
 from ..identity import canonical_bytes, strict_json_loads
 
-TG_REVISION = "3540a3422bbe4182151656a772950c5bc1362ab4"
+TG_REVISION = "7316bfeb9f97096bba0de7f76af67f171ddde65b"
 FORMAT = "draftbench-native-replay-v1"
 REPLAY_REQUEST_FORMAT = "draftbench-review-replay-request-v1"
 REPLAY_RESPONSE_FORMAT = "trust-growth-review-replay-v1"

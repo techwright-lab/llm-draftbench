@@ -99,7 +99,7 @@ one system and one user message. They are sent **as native roles**:
 The export has no schema or request settings. The lab pins TrustGrowth's
 `SeoContentSchema` (writer, revision) and `ReviewLedgerSchema` (reviewer) and the
 settings above from TrustGrowth revision
-`3540a3422bbe4182151656a772950c5bc1362ab4` in
+`7316bfeb9f97096bba0de7f76af67f171ddde65b` in
 `draftbench.adapters.replay_contract`. `prepare` refuses a case whose
 `prompt_version` is not a prefix of that revision (`tg_revision_mismatch`); a
 newer export needs a reviewed lab update first. Saved outputs are still validated
@@ -202,8 +202,9 @@ and requires a separately entered approval digest.
 A valid export alone does not prove that revision replay can run. The old
 `3df1b314` pin predates TG's no-write replay task; do not reuse that packet or
 spoof its revision when running newer TG code. The current pin is the verified
-replay-enabled `3540a342` deployment; both pinned schemas were compared against
-its actual Schematist render and are unchanged.
+replay-enabled `7316bfeb` deployment. Both pinned schema sources, the
+Schematist version and the replay task are unchanged from the earlier
+`3540a342` pin, which was compared against its actual Schematist render.
 
 Before preparing the final plan:
 
@@ -344,7 +345,7 @@ Request, written once per model (a changed rewrite is refused):
   "case_id": "draft-123",
   "model": "gpt-6-sol",
   "stage": "draft",
-  "tg_revision": "3540a3422bbe4182151656a772950c5bc1362ab4",
+  "tg_revision": "7316bfeb9f97096bba0de7f76af67f171ddde65b",
   "draft": {"title": "…", "body": "…", "meta_title": "…", "meta_description": "…", "tags": ["…"]},
   "draft_sha256": "<sha256 of the exact saved writer output text, UTF-8>",
   "ledger": {"results": [], "factual_issues": []},
