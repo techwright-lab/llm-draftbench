@@ -39,7 +39,7 @@ def exported_body():
 
 
 def test_pin_is_the_verified_replay_enabled_deployment():
-    assert replay.TG_REVISION == "3540a3422bbe4182151656a772950c5bc1362ab4"
+    assert replay.TG_REVISION == "7316bfeb9f97096bba0de7f76af67f171ddde65b"
 
 
 @pytest.mark.parametrize("revision", ["3df1b314", "b416538f", "0" * 40])
@@ -292,7 +292,7 @@ def test_target_words_and_length_score():
 
 
 @pytest.mark.parametrize(
-    "revision", ["3540a34", "3540a342", "3540a3422bbe4182151656a772950c5bc1362ab4"]
+    "revision", ["7316bfe", "7316bfeb", "7316bfeb9f97096bba0de7f76af67f171ddde65b"]
 )
 def test_review_replay_request_and_response_binding(revision):
     draft, review = draft_json(), review_json()
