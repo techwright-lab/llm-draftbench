@@ -99,7 +99,7 @@ one system and one user message. They are sent **as native roles**:
 The export has no schema or request settings. The lab pins TrustGrowth's
 `SeoContentSchema` (writer, revision) and `ReviewLedgerSchema` (reviewer) and the
 settings above from TrustGrowth revision
-`7316bfeb9f97096bba0de7f76af67f171ddde65b` in
+`a2489064f8bdd8af03de87db53c5b395a5f93251` in
 `draftbench.adapters.replay_contract`. `prepare` refuses a case whose
 `prompt_version` is not a prefix of that revision (`tg_revision_mismatch`); a
 newer export needs a reviewed lab update first. Saved outputs are still validated
@@ -109,13 +109,14 @@ Per role:
 
 - **Writer**: the exported writer messages, unchanged.
 - **Reviewer**: the exported TrustGrowth reviewer payload with the lab draft
-  substituted in. The exported TrustGrowth draft body must appear exactly once
+  substituted in. Replace any exported FAQ block with the lab draft FAQ entries.
+  Omit the block when the lab draft has no FAQ entries. The exported TrustGrowth draft body must appear exactly once
   between `## The draft` and `## Items`, and the `## Draft evidence` block
   (`Title:`, `Meta description:` and the closing "Draft metadata does not
   redefine the brief's promise." line) exactly once between
   `## The promise (from the brief)` and the draft; otherwise the call is refused
   (`reviewer_anchor_mismatch`) instead of reviewing the wrong text. Only the
-  draft evidence title, meta description and body change. The brief promise
+  draft evidence title, meta description, body and FAQ entries change. The brief promise
   (title, keyword, outline, notes, SEO requirements) stays as exported, even
   when the draft title equals the brief title. A blank lab meta description
   reads `not provided`, as in TrustGrowth's template. An export with cited-claim
@@ -201,10 +202,11 @@ and requires a separately entered approval digest.
 
 A valid export alone does not prove that revision replay can run. The old
 `3df1b314` pin predates TG's no-write replay task; do not reuse that packet or
-spoof its revision when running newer TG code. The current pin is the verified
-replay-enabled `7316bfeb` deployment. Both pinned schema sources, the
-Schematist version and the replay task are unchanged from the earlier
-`3540a342` pin, which was compared against its actual Schematist render.
+spoof its revision when running newer TG code. The pin is `a2489064`,
+the deployment identified in the PR review.
+`SeoContentSchema` now requires `faq`, an array of question and answer objects.
+The reviewer receives these entries separately from the body.
+Check the actual deployment before each export. The pin does not change automatically.
 
 Before preparing the final plan:
 
@@ -213,8 +215,9 @@ Before preparing the final plan:
 2. Select an admin-owned case present in that environment's database. Replay
    loads its real source draft and related records; an archived packet cannot
    substitute for a missing source row. Do not silently opt customer sites in.
-3. Export through TG's read-only exporter, download via its allowlisted private
-   object store, and verify manifest and file checksums. A one-case subset must
+3. Export through TG's read-only exporter. Set `SINCE` to bound the export
+   window and keep the packet below the 64 MB input limit. Download through
+   its allowlisted private object store. Verify manifest and file checksums. A one-case subset must
    preserve the case bytes/identity and record its parent export lineage.
 4. In a separate private probe directory, create explicitly synthetic draft and
    review outputs, send their replay requests to TG, and validate the returned
@@ -345,8 +348,8 @@ Request, written once per model (a changed rewrite is refused):
   "case_id": "draft-123",
   "model": "gpt-6-sol",
   "stage": "draft",
-  "tg_revision": "7316bfeb9f97096bba0de7f76af67f171ddde65b",
-  "draft": {"title": "…", "body": "…", "meta_title": "…", "meta_description": "…", "tags": ["…"]},
+  "tg_revision": "a2489064f8bdd8af03de87db53c5b395a5f93251",
+  "draft": {"title": "…", "body": "…", "meta_title": "…", "meta_description": "…", "tags": ["…"], "faq": []},
   "draft_sha256": "<sha256 of the exact saved writer output text, UTF-8>",
   "ledger": {"results": [], "factual_issues": []},
   "review_sha256": "<sha256 of the exact saved reviewer output text, UTF-8>"

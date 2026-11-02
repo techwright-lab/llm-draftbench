@@ -63,7 +63,7 @@ def main():
     draft["units"] = [{"unit_id": "body", "kind": "text", "content": BODY}]
     case["history"]["drafts"] = [draft]
     template = case["generator"]["writer"]["input"]
-    template["prompt_version"] = "7316bfeb"
+    template["prompt_version"] = "a2489064"
     for role, system, user, drafts in (
         ("writer", WRITER_SYSTEM, writer_user(), []),
         ("reviewer", REVIEWER_SYSTEM, reviewer_user(), [draft["draft_id"]]),

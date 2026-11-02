@@ -42,7 +42,7 @@ Every request is a native replay (`draftbench-native-replay-v1`): exactly one
 system and one user message plus a schema name from
 `draftbench.adapters.replay_contract.SCHEMAS`, the TrustGrowth
 `SeoContentSchema` and `ReviewLedgerSchema` pinned at TrustGrowth revision
-`7316bfeb9f97096bba0de7f76af67f171ddde65b`. Source sidecars and evidence files
+`a2489064f8bdd8af03de87db53c5b395a5f93251`. Source sidecars and evidence files
 never enter a prompt; a role input with evidence is refused
 (`evidence_not_supported`).
 
