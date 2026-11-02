@@ -39,10 +39,10 @@ def exported_body():
 
 
 def test_pin_is_the_verified_replay_enabled_deployment():
-    assert replay.TG_REVISION == "3540a3422bbe4182151656a772950c5bc1362ab4"
+    assert replay.TG_REVISION == "a2489064f8bdd8af03de87db53c5b395a5f93251"
 
 
-@pytest.mark.parametrize("revision", ["3df1b314", "b416538f", "0" * 40])
+@pytest.mark.parametrize("revision", ["3df1b314", "b416538f", "7316bfeb", "0" * 40])
 def test_review_replay_refuses_another_tg_revision(revision):
     draft, review = draft_json(), review_json()
     response = review_replay(draft, review) | {"tg_revision": revision}
@@ -292,7 +292,7 @@ def test_target_words_and_length_score():
 
 
 @pytest.mark.parametrize(
-    "revision", ["3540a34", "3540a342", "3540a3422bbe4182151656a772950c5bc1362ab4"]
+    "revision", ["a248906", "a2489064", "a2489064f8bdd8af03de87db53c5b395a5f93251"]
 )
 def test_review_replay_request_and_response_binding(revision):
     draft, review = draft_json(), review_json()
@@ -360,3 +360,50 @@ def test_sidecar_and_evidence_never_become_inputs():
     data["identity"] = identity(data)
     with pytest.raises(ValueError, match="evidence_not_supported"):
         _input(Case.model_validate(data), "writer")
+
+
+@pytest.mark.parametrize("exported_faq", [False, True])
+@pytest.mark.parametrize(
+    "lab_faq", [[], [{"question": "Lab question?", "answer": "Lab answer."}]]
+)
+def test_reviewer_replaces_exported_faq_with_lab_faq(exported_faq, lab_faq):
+    exported = messages("reviewer")
+    heading = (
+        "\n\n## FAQ entries of the draft (published with it, reviewed as draft text)\n"
+    )
+    if exported_faq:
+        exported[1]["content"] = exported[1]["content"].replace(
+            exported_body() + "\n\n\n\n## Items\n",
+            exported_body()
+            + heading
+            + "Exported question?\nExported answer.\n\n\n\n## Items\n",
+        )
+    draft = json.loads(draft_json()) | {"faq": lab_faq}
+    result = replay.reviewer_messages(exported, exported_body(), draft)
+    text = result[1]["content"]
+    assert "Exported question?" not in text
+    assert "Exported answer." not in text
+    assert (heading in text) == bool(lab_faq)
+    if lab_faq:
+        assert heading + "Lab question?\nLab answer.\n\n\n\n## Items\n" in text
+    assert replay.review_item_ids(result) == list(ITEMS)
+
+
+def test_writer_schema_requires_strict_faq_entries():
+    from jsonschema import Draft202012Validator
+
+    validator = Draft202012Validator(replay.SCHEMAS["SeoContentSchema"])
+    draft = json.loads(draft_json())
+    assert validator.is_valid(draft | {"faq": []})
+    assert validator.is_valid(
+        draft | {"faq": [{"question": "Question?", "answer": "Answer."}]}
+    )
+    for faq in (
+        None,
+        [{}],
+        [{"question": "Question?", "answer": "Answer.", "extra": 1}],
+    ):
+        assert not validator.is_valid(draft | {"faq": faq})
+    assert not validator.is_valid(
+        {key: value for key, value in draft.items() if key != "faq"}
+    )
