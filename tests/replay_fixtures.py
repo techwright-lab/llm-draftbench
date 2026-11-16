@@ -36,6 +36,7 @@ def draft_json(body="Synthetic fixture body."):
             "meta_title": "Synthetic meta title",
             "meta_description": "Synthetic meta description.",
             "tags": ["synthetic"],
+            "faq": [],
         }
     )
 

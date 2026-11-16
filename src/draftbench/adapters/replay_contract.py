@@ -9,7 +9,7 @@ import re
 
 from ..identity import canonical_bytes, strict_json_loads
 
-TG_REVISION = "3540a3422bbe4182151656a772950c5bc1362ab4"
+TG_REVISION = "a2489064f8bdd8af03de87db53c5b395a5f93251"
 FORMAT = "draftbench-native-replay-v1"
 REPLAY_REQUEST_FORMAT = "draftbench-review-replay-request-v1"
 REPLAY_RESPONSE_FORMAT = "trust-growth-review-replay-v1"
@@ -56,13 +56,30 @@ SCHEMAS = {
                 "not editing limits. Do not mechanically cut or pad. This is NOT a "
                 "continuation of the body."
             ),
+            "faq": {
+                "type": "array",
+                "description": "FAQ entries, separate from the body: the body must not "
+                "repeat them as a section. Empty when the article has none.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": _string("One reader question, in plain text."),
+                        "answer": _string(
+                            "A self-contained plain-text answer: no Markdown, links, "
+                            "lists or fact markers."
+                        ),
+                    },
+                    "required": ["question", "answer"],
+                    "additionalProperties": False,
+                },
+            },
             "tags": {
                 "type": "array",
                 "description": "3-8 topic tags as standalone keywords",
                 "items": {"type": "string"},
             },
         },
-        "required": ["title", "body", "meta_title", "meta_description", "tags"],
+        "required": ["title", "body", "meta_title", "meta_description", "tags", "faq"],
         "additionalProperties": False,
     },
     "ReviewLedgerSchema": {
@@ -194,6 +211,7 @@ _EVIDENCE = re.compile(
     r"Draft metadata does not redefine the brief's promise\.\n"
 )
 _BRIEF = "\n## The promise (from the brief)\n"
+_FAQ = "\n\n## FAQ entries of the draft (published with it, reviewed as draft text)\n"
 
 
 def reviewer_messages(messages, exported_body, draft):
@@ -204,19 +222,32 @@ def reviewer_messages(messages, exported_body, draft):
     """
     system, user = native_messages(messages)
     text = user["content"]
-    anchor = "\n## The draft\n" + exported_body + "\n\n\n\n## Items\n"
+    anchors = list(
+        re.finditer(
+            re.escape("\n## The draft\n" + exported_body)
+            + "(?:"
+            + re.escape(_FAQ)
+            + r"(?:(?!\n## ).)*?)?"
+            + re.escape("\n\n\n\n## Items\n"),
+            text,
+            re.S,
+        )
+    )
     evidence = list(_EVIDENCE.finditer(text))
     if (
-        text.count(anchor) != 1
+        len(anchors) != 1
         or text.count(_BRIEF) != 1
         or text.count("\n## Draft evidence\n") != 1
         or len(evidence) != 1
     ):
         raise ValueError("reviewer_anchor_mismatch")
-    start, found = text.index(anchor), evidence[0]
+    start, found = anchors[0].start(), evidence[0]
     if not text.index(_BRIEF) < found.start() < found.end() <= start:
         raise ValueError("reviewer_anchor_mismatch")
     meta = draft["meta_description"]
+    faq = "\n\n".join(
+        entry["question"] + "\n" + entry["answer"] for entry in draft.get("faq", [])
+    )
     replaced = (
         text[: found.start()]
         + "\n## Draft evidence\nTitle: "
@@ -227,8 +258,9 @@ def reviewer_messages(messages, exported_body, draft):
         + text[found.end() : start]
         + "\n## The draft\n"
         + draft["body"]
+        + (_FAQ + faq if faq else "")
         + "\n\n\n\n## Items\n"
-        + text[start + len(anchor) :]
+        + text[anchors[0].end() :]
     )
     return [system, {"role": "user", "content": replaced}]
 
